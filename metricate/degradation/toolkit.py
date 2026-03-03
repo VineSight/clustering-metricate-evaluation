@@ -47,6 +47,19 @@ DEGRADATION_TYPES = {
 
 ALL_DEGRADATION_TYPES = [t for types in DEGRADATION_TYPES.values() for t in types]
 
+# Degradation types excluded by default (can still be used explicitly)
+EXCLUDED_DEGRADATION_TYPES = [
+    "split_loosest",
+    "split_random",
+    "random_removal",
+    "remove_largest_clusters",
+    "remove_smallest_clusters",
+    "merge_nearest",
+]
+
+# Default degradation types (excludes problematic/redundant types)
+DEFAULT_DEGRADATION_TYPES = [t for t in ALL_DEGRADATION_TYPES if t not in EXCLUDED_DEGRADATION_TYPES]
+
 DEFAULT_LEVELS = ["5pct", "10pct", "25pct", "50pct"]
 LEVEL_FRACTIONS = {
     "5pct": 0.05,
@@ -60,7 +73,7 @@ LEVEL_FRACTIONS = {
 class DegradationConfig:
     """Configuration for degradation generation."""
 
-    types: list[str] = field(default_factory=lambda: ALL_DEGRADATION_TYPES)
+    types: list[str] = field(default_factory=lambda: DEFAULT_DEGRADATION_TYPES.copy())
     levels: list[str] = field(default_factory=lambda: DEFAULT_LEVELS.copy())
     random_seed: int = 42
     generate_visualizations: bool = True

@@ -1,0 +1,126 @@
+Training Dataset Statistics
+========================================
+
+Training Dataset Generation Summary
+========================================
+Total records: 73
+  - Original clusterings: 1
+  - Degraded versions: 72
+
+Metadata:
+  source_file: datasets/narrative_dataset_17clusters_full.csv
+  output_dir: training_17clusters
+  types: None
+  levels: ['5pct', '10pct', '25pct', '50pct']
+  random_seed: 42
+  timestamp: 2026-02-26T10:43:42.659689
+  n_degradations_attempted: 72
+  n_degradations_successful: 72
+  training_data_path: training_17clusters/training_data.csv
+
+DataFrame shape: (73, 74)
+
+Columns:
+clustering_name
+topic
+n_clusters
+n_samples
+quality
+quality_score
+degradation_type
+degradation_level
+Silhouette
+Davies-Bouldin
+Calinski-Harabasz
+Dunn Index
+SSE
+NCI
+Ball-Hall
+Ratkowsky-Lance
+Ray-Turi
+RMSSTD
+R-squared
+Wemmert-Gancarski
+CS index
+COP
+S_Dbw
+Det Ratio
+Gamma
+Generalized Dunn
+G-plus
+I-index (PBM)
+Log_Det_Ratio
+McClain-Rao
+Point-Biserial
+SD validity
+Tau
+Trace_WiB
+Ksq_DetW
+Banfield-Raftery
+Negentropy
+NIVA
+Score Function
+Scott-Symons
+metrics_computed
+metrics_failed
+Silhouette_norm
+Davies-Bouldin_norm
+Calinski-Harabasz_norm
+Dunn Index_norm
+SSE_norm
+NCI_norm
+Ball-Hall_norm
+Ratkowsky-Lance_norm
+Ray-Turi_norm
+RMSSTD_norm
+R-squared_norm
+Wemmert-Gancarski_norm
+CS index_norm
+COP_norm
+S_Dbw_norm
+Det Ratio_norm
+Gamma_norm
+Generalized Dunn_norm
+G-plus_norm
+I-index (PBM)_norm
+Log_Det_Ratio_norm
+McClain-Rao_norm
+Point-Biserial_norm
+SD validity_norm
+Tau_norm
+Trace_WiB_norm
+Ksq_DetW_norm
+Banfield-Raftery_norm
+Negentropy_norm
+NIVA_norm
+Score Function_norm
+Scott-Symons_norm
+
+Quality distribution:
+quality  quality_score
+0        0.50             18
+         0.75             18
+         0.90             18
+         0.95             18
+1        1.00              1
+
+Degradation type counts:
+degradation_type
+label_swap_random           4
+label_swap_neighboring      4
+label_swap_distant          4
+merge_random                4
+merge_nearest               4
+merge_farthest              4
+split_random                4
+split_largest               4
+split_loosest               4
+noise_injection             4
+random_removal              4
+core_removal                4
+boundary_reassignment       4
+remove_smallest_clusters    4
+remove_largest_clusters     4
+remove_tightest_clusters    4
+embedding_perturbation      4
+centroid_displacement       4

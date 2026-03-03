@@ -1,6 +1,12 @@
 # CSV files
 *.csv
 
+# Parquet files
+*.parquet  
+
+# html files
+*.html
+
 # Cache files
 __pycache__/
 *.py[cod]

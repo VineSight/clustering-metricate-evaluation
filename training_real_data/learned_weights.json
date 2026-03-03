@@ -1,0 +1,196 @@
+{
+  "coefficients": {
+    "Ball-Hall_norm": 0.02788250800030146,
+    "Banfield-Raftery_norm": -0.0,
+    "COP_norm": 0.24613963400334973,
+    "CS index_norm": 0.08257293645849244,
+    "Calinski-Harabasz_norm": 0.0,
+    "Davies-Bouldin_norm": -0.3983945607576588,
+    "Det Ratio_norm": -0.0,
+    "Dunn Index_norm": -0.03627063894964122,
+    "G-plus_norm": -0.1054846983828306,
+    "Gamma_norm": -0.0,
+    "Generalized Dunn_norm": 0.7065814108347639,
+    "I-index (PBM)_norm": -0.3985408171840091,
+    "Ksq_DetW_norm": 0.0,
+    "Log_Det_Ratio_norm": 0.2168168040489215,
+    "McClain-Rao_norm": 0.0,
+    "NCI_norm": 0.0,
+    "NIVA_norm": -0.052569419929440794,
+    "Negentropy_norm": -0.0,
+    "Point-Biserial_norm": 0.4437086740812618,
+    "R-squared_norm": -0.0,
+    "RMSSTD_norm": 0.0,
+    "Ratkowsky-Lance_norm": 0.16435242535456315,
+    "Ray-Turi_norm": -0.0,
+    "SD validity_norm": -0.0,
+    "SSE_norm": -0.0,
+    "S_Dbw_norm": 0.4772328963018045,
+    "Score Function_norm": -0.10671664587467515,
+    "Scott-Symons_norm": 0.3831905124301487,
+    "Silhouette_norm": 0.0,
+    "Tau_norm": -0.08318395769220426,
+    "Trace_WiB_norm": -0.0,
+    "Wemmert-Gancarski_norm": 0.016257208972295933
+  },
+  "bias": -0.07452286420279763,
+  "regularization": "lasso",
+  "alpha": 0.001,
+  "training_samples": 147,
+  "non_zero_count": 17,
+  "feature_importance": [
+    {
+      "metric": "Generalized Dunn_norm",
+      "weight": 0.7065814108347639
+    },
+    {
+      "metric": "S_Dbw_norm",
+      "weight": 0.4772328963018045
+    },
+    {
+      "metric": "Point-Biserial_norm",
+      "weight": 0.4437086740812618
+    },
+    {
+      "metric": "I-index (PBM)_norm",
+      "weight": -0.3985408171840091
+    },
+    {
+      "metric": "Davies-Bouldin_norm",
+      "weight": -0.3983945607576588
+    },
+    {
+      "metric": "Scott-Symons_norm",
+      "weight": 0.3831905124301487
+    },
+    {
+      "metric": "COP_norm",
+      "weight": 0.24613963400334973
+    },
+    {
+      "metric": "Log_Det_Ratio_norm",
+      "weight": 0.2168168040489215
+    },
+    {
+      "metric": "Ratkowsky-Lance_norm",
+      "weight": 0.16435242535456315
+    },
+    {
+      "metric": "Score Function_norm",
+      "weight": -0.10671664587467515
+    },
+    {
+      "metric": "G-plus_norm",
+      "weight": -0.1054846983828306
+    },
+    {
+      "metric": "Tau_norm",
+      "weight": -0.08318395769220426
+    },
+    {
+      "metric": "CS index_norm",
+      "weight": 0.08257293645849244
+    },
+    {
+      "metric": "NIVA_norm",
+      "weight": -0.052569419929440794
+    },
+    {
+      "metric": "Dunn Index_norm",
+      "weight": -0.03627063894964122
+    },
+    {
+      "metric": "Ball-Hall_norm",
+      "weight": 0.02788250800030146
+    },
+    {
+      "metric": "Wemmert-Gancarski_norm",
+      "weight": 0.016257208972295933
+    },
+    {
+      "metric": "Banfield-Raftery_norm",
+      "weight": -0.0
+    },
+    {
+      "metric": "Calinski-Harabasz_norm",
+      "weight": 0.0
+    },
+    {
+      "metric": "Det Ratio_norm",
+      "weight": -0.0
+    },
+    {
+      "metric": "Gamma_norm",
+      "weight": -0.0
+    },
+    {
+      "metric": "Ksq_DetW_norm",
+      "weight": 0.0
+    },
+    {
+      "metric": "McClain-Rao_norm",
+      "weight": 0.0
+    },
+    {
+      "metric": "NCI_norm",
+      "weight": 0.0
+    },
+    {
+      "metric": "Negentropy_norm",
+      "weight": -0.0
+    },
+    {
+      "metric": "R-squared_norm",
+      "weight": -0.0
+    },
+    {
+      "metric": "RMSSTD_norm",
+      "weight": 0.0
+    },
+    {
+      "metric": "Ray-Turi_norm",
+      "weight": -0.0
+    },
+    {
+      "metric": "SD validity_norm",
+      "weight": -0.0
+    },
+    {
+      "metric": "SSE_norm",
+      "weight": -0.0
+    },
+    {
+      "metric": "Silhouette_norm",
+      "weight": 0.0
+    },
+    {
+      "metric": "Trace_WiB_norm",
+      "weight": -0.0
+    }
+  ],
+  "zeroed_metrics": [
+    "Banfield-Raftery_norm",
+    "Calinski-Harabasz_norm",
+    "Det Ratio_norm",
+    "Gamma_norm",
+    "Ksq_DetW_norm",
+    "McClain-Rao_norm",
+    "NCI_norm",
+    "Negentropy_norm",
+    "R-squared_norm",
+    "RMSSTD_norm",
+    "Ray-Turi_norm",
+    "SD validity_norm",
+    "SSE_norm",
+    "Silhouette_norm",
+    "Trace_WiB_norm"
+  ],
+  "cv_scores": {
+    "r2_mean": -0.23542366275701374,
+    "r2_std": 0.3216013134196787,
+    "rmse_mean": 0.33158646816167175,
+    "rmse_std": 0.048850910201801885,
+    "mae_mean": 0.30394545559360536,
+    "mae_std": 0.04983245191369164
+  }
+}

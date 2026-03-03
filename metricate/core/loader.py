@@ -266,10 +266,9 @@ def validate_data(
 
     # V-004: Minimum embedding dimensions
     if len(embedding_cols) < 2:
-        raise DimensionMismatchError(
-            expected="at least 2",
-            actual=len(embedding_cols),
-            message="Need at least 2 embedding dimensions",
+        raise InvalidCSVError(
+            "Need at least 2 embedding dimensions",
+            details={"dimensions": len(embedding_cols), "columns": list(embedding_cols)},
         )
 
     # V-005: No NaN in labels
@@ -356,12 +355,18 @@ def load_csv(
             string_array_cols.append(col)
 
     expanded_cols = []
-    if string_array_cols and embedding_cols is None:
-        # Use the first available string array column (reduced_embedding preferred)
-        col_to_expand = string_array_cols[0]
-        df, expanded_cols = expand_string_array_column(df, col_to_expand)
-        # Set embedding_cols to the expanded columns
-        embedding_cols = expanded_cols
+    # Expand if embedding_cols is None, or if it contains a single string-array column
+    if string_array_cols:
+        if embedding_cols is None:
+            # Use the first available string array column (reduced_embedding preferred)
+            col_to_expand = string_array_cols[0]
+            df, expanded_cols = expand_string_array_column(df, col_to_expand)
+            embedding_cols = expanded_cols
+        elif len(embedding_cols) == 1 and embedding_cols[0] in string_array_cols:
+            # Explicitly passed a single string-array column, expand it
+            col_to_expand = embedding_cols[0]
+            df, expanded_cols = expand_string_array_column(df, col_to_expand)
+            embedding_cols = expanded_cols
 
     # Auto-detect columns
     label_col, embedding_cols = detect_columns(df, label_col, embedding_cols)
@@ -420,9 +425,8 @@ def load_comparison_pair(
     # Validate compatible dimensions
     if data_a.n_features != data_b.n_features:
         raise DimensionMismatchError(
-            expected=data_a.n_features,
-            actual=data_b.n_features,
-            message="Embedding dimensions must match for comparison",
+            dimensions_a=data_a.n_features,
+            dimensions_b=data_b.n_features,
         )
 
     return data_a, data_b

@@ -507,14 +507,29 @@ class ClusteringDegrader:
 
     # ==================== UTILITY METHODS ====================
 
-    def save_degraded(self, df: pd.DataFrame, output_path: str):
-        """Save degraded dataframe, dropping internal columns."""
+    def save_degraded(self, df: pd.DataFrame, output_path: str, format: str = "csv"):
+        """Save degraded dataframe, dropping internal columns.
+        
+        Args:
+            df: DataFrame to save
+            output_path: Path to save to (extension will be adjusted based on format)
+            format: 'csv' or 'parquet' (parquet is ~5-10x smaller)
+        """
         df_to_save = df.drop(columns=["_parsed_embedding"], errors="ignore")
-        df_to_save.to_csv(output_path, index=False)
+        
+        output_path = Path(output_path)
+        if format == "parquet":
+            # Change extension to .parquet if needed
+            if output_path.suffix == ".csv":
+                output_path = output_path.with_suffix(".parquet")
+            # Use fastparquet engine (pyarrow 23 has pandas compatibility issues)
+            df_to_save.to_parquet(output_path, index=False, compression="snappy", engine="fastparquet")
+        else:
+            df_to_save.to_csv(output_path, index=False)
         print(f"Saved degraded dataset to: {output_path}")
 
     def generate_degradation_suite(
-        self, output_dir: str = "degraded_datasets", levels: list[float] = None
+        self, output_dir: str = "degraded_datasets", levels: list[float] = None, format: str = "parquet"
     ):
         """
         Generate a comprehensive suite of degraded datasets at various levels.
@@ -522,19 +537,22 @@ class ClusteringDegrader:
         Args:
             output_dir: Directory to save degraded datasets
             levels: Degradation levels to apply (fractions)
+            format: 'csv' or 'parquet' (parquet is ~5-10x smaller, recommended)
         """
         if levels is None:
             levels = [0.05, 0.1, 0.25, 0.5]
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True)
+        
+        ext = ".parquet" if format == "parquet" else ".csv"
 
         degradations = []
 
         # 1. Random removal at various levels
         for level in levels:
             df = self.random_removal(fraction=level)
-            filename = f"random_removal_{int(level * 100)}pct.csv"
-            self.save_degraded(df, output_path / filename)
+            filename = f"random_removal_{int(level * 100)}pct{ext}"
+            self.save_degraded(df, output_path / filename, format=format)
             degradations.append(
                 {"type": "random_removal", "level": level, "filename": filename, "n_posts": len(df)}
             )
@@ -543,8 +561,8 @@ class ClusteringDegrader:
         for level in levels:
             for swap_type in ["random", "neighboring", "distant"]:
                 df = self.label_swap(fraction=level, swap_type=swap_type)
-                filename = f"label_swap_{swap_type}_{int(level * 100)}pct.csv"
-                self.save_degraded(df, output_path / filename)
+                filename = f"label_swap_{swap_type}_{int(level * 100)}pct{ext}"
+                self.save_degraded(df, output_path / filename, format=format)
                 degradations.append(
                     {
                         "type": f"label_swap_{swap_type}",
@@ -558,8 +576,8 @@ class ClusteringDegrader:
         for n in [1, 2, 3, 5]:
             for criteria in ["tightest", "smallest", "largest"]:
                 df = self.remove_tight_clusters(n_clusters=n, criteria=criteria)
-                filename = f"remove_{criteria}_{n}_clusters.csv"
-                self.save_degraded(df, output_path / filename)
+                filename = f"remove_{criteria}_{n}_clusters{ext}"
+                self.save_degraded(df, output_path / filename, format=format)
                 degradations.append(
                     {
                         "type": f"remove_{criteria}_clusters",
@@ -574,8 +592,8 @@ class ClusteringDegrader:
             for merge_type in ["nearest", "farthest", "random"]:
                 np.random.seed(self.random_seed)  # Reset for reproducibility
                 df = self.merge_clusters(n_merges=n, merge_type=merge_type)
-                filename = f"merge_{merge_type}_{n}_pairs.csv"
-                self.save_degraded(df, output_path / filename)
+                filename = f"merge_{merge_type}_{n}_pairs{ext}"
+                self.save_degraded(df, output_path / filename, format=format)
                 degradations.append(
                     {
                         "type": f"merge_{merge_type}",
@@ -590,8 +608,8 @@ class ClusteringDegrader:
             for split_type in ["largest", "loosest", "random"]:
                 np.random.seed(self.random_seed)
                 df = self.split_clusters(n_splits=n, split_type=split_type)
-                filename = f"split_{split_type}_{n}_clusters.csv"
-                self.save_degraded(df, output_path / filename)
+                filename = f"split_{split_type}_{n}_clusters{ext}"
+                self.save_degraded(df, output_path / filename, format=format)
                 degradations.append(
                     {
                         "type": f"split_{split_type}",
@@ -604,8 +622,8 @@ class ClusteringDegrader:
         # 6. Boundary reassignment
         for level in levels:
             df = self.boundary_reassignment(fraction=level)
-            filename = f"boundary_reassign_{int(level * 100)}pct.csv"
-            self.save_degraded(df, output_path / filename)
+            filename = f"boundary_reassign_{int(level * 100)}pct{ext}"
+            self.save_degraded(df, output_path / filename, format=format)
             degradations.append(
                 {
                     "type": "boundary_reassignment",
@@ -618,8 +636,8 @@ class ClusteringDegrader:
         # 7. Core removal
         for level in levels:
             df = self.remove_core_points(fraction=level)
-            filename = f"core_removal_{int(level * 100)}pct.csv"
-            self.save_degraded(df, output_path / filename)
+            filename = f"core_removal_{int(level * 100)}pct{ext}"
+            self.save_degraded(df, output_path / filename, format=format)
             degradations.append(
                 {"type": "core_removal", "level": level, "filename": filename, "n_posts": len(df)}
             )
@@ -627,8 +645,8 @@ class ClusteringDegrader:
         # 8. Embedding perturbation
         for level in [0.1, 0.25, 0.5, 1.0]:
             df = self.embedding_perturbation(noise_scale=level)
-            filename = f"embedding_perturb_{int(level * 100)}pct.csv"
-            self.save_degraded(df, output_path / filename)
+            filename = f"embedding_perturb_{int(level * 100)}pct{ext}"
+            self.save_degraded(df, output_path / filename, format=format)
             degradations.append(
                 {
                     "type": "embedding_perturbation",
@@ -641,8 +659,8 @@ class ClusteringDegrader:
         # 9. Add noise points
         for n in [100, 500, 1000, 2000]:
             df = self.add_noise_points(n_noise=n)
-            filename = f"noise_injection_{n}_points.csv"
-            self.save_degraded(df, output_path / filename)
+            filename = f"noise_injection_{n}_points{ext}"
+            self.save_degraded(df, output_path / filename, format=format)
             degradations.append(
                 {"type": "noise_injection", "level": n, "filename": filename, "n_posts": len(df)}
             )
@@ -650,8 +668,8 @@ class ClusteringDegrader:
         # 10. Centroid displacement
         for level in [0.1, 0.25, 0.5, 0.75]:
             df = self.centroid_displacement(displacement_scale=level)
-            filename = f"centroid_displacement_{int(level * 100)}pct.csv"
-            self.save_degraded(df, output_path / filename)
+            filename = f"centroid_displacement_{int(level * 100)}pct{ext}"
+            self.save_degraded(df, output_path / filename, format=format)
             degradations.append(
                 {
                     "type": "centroid_displacement",

@@ -5,13 +5,19 @@ This module provides functions for comparing two clusterings and
 determining which one performs better across the metrics.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from metricate.core.evaluator import evaluate as _evaluate
 from metricate.core.exceptions import DimensionMismatchError
 from metricate.core.loader import load_csv
 from metricate.core.reference import METRIC_REFERENCE
 from metricate.output.report import ComparisonResult
+
+if TYPE_CHECKING:
+    from metricate.training.weights import MetricWeights
 
 
 def determine_winner(
@@ -62,6 +68,7 @@ def compare(
     force_all: bool = False,
     name_a: str = "A",
     name_b: str = "B",
+    weights: MetricWeights | None = None,
 ) -> ComparisonResult:
     """
     Compare two clusterings and determine the overall winner.
@@ -75,9 +82,11 @@ def compare(
         force_all: If True, compute O(n²) metrics even on large datasets
         name_a: Label for first clustering (default: "A")
         name_b: Label for second clustering (default: "B")
+        weights: Optional MetricWeights for weighted winner determination
 
     Returns:
-        ComparisonResult with both evaluations, per-metric winners, and overall winner
+        ComparisonResult with both evaluations, per-metric winners, and overall winner.
+        If weights provided, includes weighted_winner and compound_scores.
 
     Raises:
         FileNotFoundError: If either CSV file does not exist
@@ -87,6 +96,11 @@ def compare(
         >>> result = metricate.compare("v1.csv", "v2.csv")
         >>> print(f"Winner: {result.winner}")
         >>> print(result.to_table())
+        >>>
+        >>> # With weights for weighted comparison
+        >>> weights = metricate.load_weights("weights.json")
+        >>> result = metricate.compare("v1.csv", "v2.csv", weights=weights)
+        >>> print(f"Weighted winner: {result.weighted_winner}")
     """
     # Load datasets to check dimensions before evaluation
     data_a = load_csv(csv_path_a, label_col=label_col, embedding_cols=embedding_cols)
@@ -111,13 +125,14 @@ def compare(
             f"({pct_diff:.1f}% difference). Metrics are still comparable but may reflect different scales."
         ]
 
-    # Evaluate both clusterings
+    # Evaluate both clusterings (with weights if provided)
     eval_a = _evaluate(
         csv_path_a,
         label_col=label_col,
         embedding_cols=embedding_cols,
         exclude=exclude,
         force_all=force_all,
+        weights=weights,
     )
     eval_b = _evaluate(
         csv_path_b,
@@ -125,6 +140,7 @@ def compare(
         embedding_cols=embedding_cols,
         exclude=exclude,
         force_all=force_all,
+        weights=weights,
     )
 
     result.add_evaluation(name_a, eval_a)
@@ -158,7 +174,7 @@ def compare(
     result.metric_winners = metric_winners
     result.wins = {name_a: wins_a, name_b: wins_b, "tie": ties}
 
-    # Determine overall winner
+    # Determine overall winner (by metric voting)
     if wins_a > wins_b:
         result.winner = name_a
     elif wins_b > wins_a:
@@ -167,6 +183,21 @@ def compare(
         result.winner = "tie"
 
     result.winner_margin = abs(wins_a - wins_b)
+
+    # Determine weighted winner if weights provided
+    if weights is not None:
+        score_a = eval_a.compound_score
+        score_b = eval_b.compound_score
+
+        if score_a is not None and score_b is not None:
+            result.compound_scores = {name_a: score_a, name_b: score_b}
+
+            if score_a > score_b:
+                result.weighted_winner = name_a
+            elif score_b > score_a:
+                result.weighted_winner = name_b
+            else:
+                result.weighted_winner = "tie"
 
     return result
 

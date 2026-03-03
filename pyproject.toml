@@ -47,9 +47,9 @@ dev = [
 metricate = "metricate.cli.main:cli"
 
 [project.urls]
-Homepage = "https://github.com/metricate/metricate"
-Documentation = "https://metricate.readthedocs.io"
-Repository = "https://github.com/metricate/metricate"
+Homepage = "https://github.com/VineSight/clustering-metricate-evaluation"
+Documentation = "https://github.com/VineSight/clustering-metricate-evaluation/tree/main/docs"
+Repository = "https://github.com/VineSight/clustering-metricate-evaluation"
 
 [tool.setuptools.packages.find]
 where = ["."]

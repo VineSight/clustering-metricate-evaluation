@@ -19,7 +19,7 @@ from metricate import __version__
 def cli():
     """Metricate: Clustering Evaluation Toolkit.
 
-    Evaluate clustering quality with 34 metrics, compare clusterings,
+    Evaluate clustering quality with 36 metrics, compare clusterings,
     and generate degraded datasets for testing metric robustness.
     """
     pass
@@ -60,7 +60,14 @@ def cli():
     default=None,
     help="Output file path (prints to stdout if not specified)",
 )
-def evaluate(csv_path, label_col, embedding_cols, exclude, force_all, format, output):
+@click.option(
+    "--weights",
+    "-w",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to weights JSON file for computing compound score",
+)
+def evaluate(csv_path, label_col, embedding_cols, exclude, force_all, format, output, weights):
     """Evaluate clustering metrics for a CSV file.
 
     CSV_PATH: Path to the CSV file containing clustering data.
@@ -72,6 +79,8 @@ def evaluate(csv_path, label_col, embedding_cols, exclude, force_all, format, ou
         metricate evaluate data.csv --exclude Gamma,Tau --format json
 
         metricate evaluate large.csv --force-all -o results.json
+
+        metricate evaluate clustering.csv --weights weights.json
     """
     import warnings
 
@@ -79,6 +88,12 @@ def evaluate(csv_path, label_col, embedding_cols, exclude, force_all, format, ou
 
     from metricate.core.evaluator import evaluate as _evaluate
     from metricate.output.formatters import to_csv, to_json
+    from metricate.training.weights import load_weights
+
+    # Load weights if provided
+    weights_obj = None
+    if weights:
+        weights_obj = load_weights(weights)
 
     # Parse embedding cols if provided
     emb_cols = None
@@ -97,6 +112,7 @@ def evaluate(csv_path, label_col, embedding_cols, exclude, force_all, format, ou
             embedding_cols=emb_cols,
             exclude=excl,
             force_all=force_all,
+            weights=weights_obj,
         )
 
         # Format output
@@ -142,6 +158,13 @@ def evaluate(csv_path, label_col, embedding_cols, exclude, force_all, format, ou
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
 @click.option("--name-a", default="A", help="Label for first clustering")
 @click.option("--name-b", default="B", help="Label for second clustering")
+@click.option(
+    "--weights",
+    "-w",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to weights JSON file for weighted winner determination",
+)
 def compare(
     csv_path_a,
     csv_path_b,
@@ -153,6 +176,7 @@ def compare(
     output,
     name_a,
     name_b,
+    weights,
 ):
     """Compare two clusterings and determine the winner.
 
@@ -166,6 +190,8 @@ def compare(
         metricate compare old.csv new.csv --name-a "Old" --name-b "New"
 
         metricate compare a.csv b.csv --format json -o comparison.json
+
+        metricate compare v1.csv v2.csv --weights weights.json
     """
     import warnings
 
@@ -173,6 +199,12 @@ def compare(
 
     from metricate.comparison.compare import compare as _compare
     from metricate.comparison.compare import compare_to_table
+    from metricate.training.weights import load_weights
+
+    # Load weights if provided
+    weights_obj = None
+    if weights:
+        weights_obj = load_weights(weights)
 
     # Parse embedding cols if provided
     emb_cols = None
@@ -194,6 +226,7 @@ def compare(
             force_all=force_all,
             name_a=name_a,
             name_b=name_b,
+            weights=weights_obj,
         )
 
         # Format output
@@ -225,6 +258,154 @@ def compare(
             click.echo(f"Results written to {output}")
         else:
             click.echo(output_str)
+
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("csv_path", type=click.Path(exists=True))
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    default=None,
+    help="Output file path for trained weights JSON",
+)
+@click.option(
+    "--regularization",
+    "-r",
+    type=click.Choice(["ridge", "lasso"]),
+    default="ridge",
+    help="Regularization type (default: ridge)",
+)
+@click.option(
+    "--alpha",
+    "-a",
+    type=float,
+    default=1.0,
+    help="Regularization strength (default: 1.0, ignored with --auto-alpha)",
+)
+@click.option(
+    "--auto-alpha",
+    is_flag=True,
+    help="Automatically select optimal alpha via cross-validation",
+)
+@click.option(
+    "--cv-splits",
+    type=int,
+    default=5,
+    help="Number of cross-validation folds (default: 5)",
+)
+@click.option(
+    "--skip-cv",
+    is_flag=True,
+    help="Skip cross-validation (faster but no CV metrics)",
+)
+@click.option(
+    "--skip-sanity-check",
+    is_flag=True,
+    help="Skip sanity check (original > degraded validation)",
+)
+@click.option(
+    "--top-n",
+    type=int,
+    default=10,
+    help="Number of top features to display (default: 10)",
+)
+def train(
+    csv_path,
+    output,
+    regularization,
+    alpha,
+    auto_alpha,
+    cv_splits,
+    skip_cv,
+    skip_sanity_check,
+    top_n,
+):
+    """Train metric weights from a training dataset.
+
+    CSV_PATH: Path to training CSV with normalized metrics and quality_score.
+
+    Examples:
+
+        metricate train training_data.csv -o weights.json
+
+        metricate train data.csv --regularization lasso --auto-alpha
+
+        metricate train data.csv -r ridge -a 0.1 --cv-splits 10
+    """
+    import warnings
+
+    warnings.filterwarnings("ignore")
+
+    from metricate.training.learner import train_weights
+
+    try:
+        click.echo(f"Training on {csv_path}...")
+        click.echo(f"  Regularization: {regularization.upper()}")
+        if auto_alpha:
+            click.echo("  Alpha: auto-tuning enabled")
+        else:
+            click.echo(f"  Alpha: {alpha}")
+        click.echo()
+
+        result = train_weights(
+            csv_path,
+            regularization=regularization,
+            alpha=alpha,
+            auto_alpha=auto_alpha,
+            run_cv=not skip_cv,
+            cv_splits=cv_splits,
+            run_sanity_check=not skip_sanity_check,
+        )
+
+        # Display results
+        weights = result.weights
+        click.echo(f"Training complete!")
+        click.echo(f"  Samples: {weights.training_samples}")
+        click.echo(f"  Features: {len(weights.coefficients)}")
+        click.echo(f"  Non-zero: {weights.non_zero_count}")
+        if auto_alpha:
+            click.echo(f"  Selected alpha: {weights.alpha}")
+        click.echo()
+
+        # CV results
+        if result.cv_scores:
+            r2_mean = result.cv_scores.get("r2_mean", 0)
+            r2_std = result.cv_scores.get("r2_std", 0)
+            rmse_mean = result.cv_scores.get("rmse_mean", 0)
+            mae_mean = result.cv_scores.get("mae_mean", 0)
+            click.echo(f"Cross-validation:")
+            click.echo(f"  R²: {r2_mean:.4f} (± {r2_std:.4f})")
+            click.echo(f"  RMSE: {rmse_mean:.4f}")
+            click.echo(f"  MAE: {mae_mean:.4f}")
+            click.echo()
+
+        # Sanity check
+        if not skip_sanity_check:
+            status = "PASS" if result.sanity_check_passed else "FAIL"
+            click.echo(f"Sanity check: {status}")
+            if result.sanity_failures:
+                for failure in result.sanity_failures[:5]:
+                    click.echo(f"  - {failure}", err=True)
+            click.echo()
+
+        # Top features
+        click.echo(f"Top {top_n} features by importance:")
+        for i, (name, coef) in enumerate(result.feature_importance[:top_n], 1):
+            sign = "+" if coef >= 0 else ""
+            click.echo(f"  {i:2}. {name}: {sign}{coef:.4f}")
+        click.echo()
+
+        # Save weights
+        if output:
+            result.save_weights(output)
+            click.echo(f"Weights saved to {output}")
+        else:
+            click.echo("Use -o/--output to save weights to a file")
 
     except Exception as e:
         click.echo(f"Error: {e}", err=True)

@@ -1,8 +1,9 @@
 """
 Metricate: A clustering evaluation toolkit.
 
-Evaluate clustering quality with 34 metrics, compare clusterings,
-and generate degraded datasets for testing metric robustness.
+Evaluate clustering quality with 36 metrics, compare clusterings,
+generate degraded datasets for testing metric robustness, and train
+quality scoring models using machine learning.
 
 Example:
     >>> import metricate
@@ -15,12 +16,31 @@ Example:
 
     >>> # Generate degraded datasets
     >>> result = metricate.degrade("data.csv", "./output/")
+
+    >>> # Train metric weights for compound scoring
+    >>> training_result = metricate.train_weights("training_data.csv")
+    >>> print(f"CV R²: {training_result.cv_scores['r2_mean']:.3f}")
+    >>> training_result.save_weights("weights.json")
+
+    >>> # Evaluate with learned weights
+    >>> weights = metricate.load_weights("weights.json")
+    >>> result = metricate.evaluate("clustering.csv", weights=weights)
+    >>> print(f"Compound score: {result.compound_score:.3f}")
+
+    >>> # Compare with compound scoring
+    >>> comparison = metricate.compare("v1.csv", "v2.csv", weights=weights)
+    >>> print(f"Weighted winner: {comparison.weighted_winner}")
 """
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    from metricate.training.weights import MetricWeights
 
 __version__ = "0.1.0"
 
@@ -32,11 +52,13 @@ def evaluate(
     force_all: bool = False,
     label_col: str | None = None,
     embedding_cols: list[str] | None = None,
+    weights: "MetricWeights | None" = None,
+    final_score: bool = False,
 ):
     """
     Evaluate a single clustering and return all metric scores.
 
-    Computes up to 34 clustering quality metrics on the provided dataset.
+    Computes up to 36 clustering quality metrics on the provided dataset.
     Automatically detects label and embedding columns if not specified.
 
     Args:
@@ -45,6 +67,9 @@ def evaluate(
         force_all: If True, compute O(n²) metrics even for large datasets.
         label_col: Name of cluster label column (auto-detected if None).
         embedding_cols: List of embedding column names (auto-detected if None).
+        weights: Optional MetricWeights for computing compound score.
+        final_score: If True and no weights provided, returns an unweighted average
+            of all normalized metrics as final_score. NOT RECOMMENDED for production use.
 
     Returns:
         EvaluationResult: Object containing metric scores with methods:
@@ -52,6 +77,7 @@ def evaluate(
             - to_dataframe(): pandas DataFrame
             - to_json(): JSON string
             - to_csv(): CSV string
+            If weights provided, also includes compound_score.
 
     Raises:
         FileNotFoundError: If csv_path does not exist.
@@ -63,6 +89,11 @@ def evaluate(
         >>> result = metricate.evaluate("clustering.csv")
         >>> print(result.to_table())
         >>> df = result.to_dataframe()
+        >>>
+        >>> # With weights for compound score
+        >>> weights = metricate.load_weights("weights.json")
+        >>> result = metricate.evaluate("clustering.csv", weights=weights)
+        >>> print(f"Compound score: {result.compound_score:.3f}")
     """
     from metricate.core.evaluator import evaluate as _evaluate
 
@@ -72,6 +103,8 @@ def evaluate(
         force_all=force_all,
         label_col=label_col,
         embedding_cols=embedding_cols,
+        weights=weights,
+        final_score=final_score,
     )
 
 
@@ -85,6 +118,7 @@ def compare(
     embedding_cols: list[str] | None = None,
     name_a: str = "A",
     name_b: str = "B",
+    weights: "MetricWeights | None" = None,
 ):
     """
     Compare two clusterings and determine the winner.
@@ -92,6 +126,8 @@ def compare(
     Evaluates both clusterings and determines which is better based on
     the majority of metrics. Each metric "votes" for the better clustering
     according to its direction preference (higher/lower is better).
+
+    If weights are provided, also determines winner by compound score.
 
     Args:
         csv_path_a: Path to first CSV file.
@@ -102,12 +138,14 @@ def compare(
         embedding_cols: List of embedding column names (auto-detected if None).
         name_a: Display name for first clustering (default: "A").
         name_b: Display name for second clustering (default: "B").
+        weights: Optional MetricWeights for weighted winner determination.
 
     Returns:
         ComparisonResult: Object containing comparison with attributes:
             - winner: Name of the winning clustering
             - wins: Dict with win counts {"A": n, "B": m, "Tie": t}
             - metric_winners: Dict mapping metric name to winner
+            - weighted_winner: Winner by compound score (if weights provided)
             - to_table(): Formatted comparison table
             - to_dataframe(): pandas DataFrame
 
@@ -115,6 +153,11 @@ def compare(
         >>> result = metricate.compare("v1.csv", "v2.csv")
         >>> print(f"Winner: {result.winner}")
         >>> print(result.to_table())
+        >>>
+        >>> # With weights for weighted comparison
+        >>> weights = metricate.load_weights("weights.json")
+        >>> result = metricate.compare("v1.csv", "v2.csv", weights=weights)
+        >>> print(f"Weighted winner: {result.weighted_winner}")
     """
     from metricate.comparison.compare import compare as _compare
 
@@ -127,6 +170,7 @@ def compare(
         embedding_cols=embedding_cols,
         name_a=name_a,
         name_b=name_b,
+        weights=weights,
     )
 
 
@@ -367,6 +411,91 @@ def generate_training_data_batch(
     )
 
 
+def train_weights(
+    csv_path: str | Path,
+    *,
+    regularization: str = "ridge",
+    alpha: float = 1.0,
+    auto_alpha: bool = False,
+    alphas: list[float] | None = None,
+    run_cv: bool = True,
+    cv_splits: int = 5,
+    run_sanity_check: bool = True,
+):
+    """
+    Train a regression model to learn optimal metric weights for quality scoring.
+
+    Uses Ridge (default) or Lasso regularization to learn coefficients that
+    weight each metric's contribution to a compound quality score.
+
+    The learned formula is:
+        score = clip(Σ(weight_i × metric_i) + bias, 0, 1)
+
+    Args:
+        csv_path: Path to training dataset CSV with normalized metrics and quality_score.
+        regularization: Type of regularization ("ridge" or "lasso").
+        alpha: Regularization strength (ignored if auto_alpha=True).
+        auto_alpha: If True, use cross-validation to select optimal alpha.
+        alphas: Candidate alpha values for auto-tuning.
+        run_cv: If True, run leave-one-clustering-out cross-validation.
+        cv_splits: Number of CV folds (default: 5).
+        run_sanity_check: If True, verify original scores > all degraded scores.
+
+    Returns:
+        TrainingResult: Object containing:
+            - weights: MetricWeights with coefficients and bias
+            - feature_importance: Ranked list of (metric, weight) tuples
+            - zeroed_metrics: Metrics with zero weight (Lasso only)
+            - cv_scores: Cross-validation metrics (R², MAE, RMSE)
+            - cv_results: Per-fold CVResult objects
+            - sanity_check_passed: True if original > all degraded
+            - sanity_failures: List of violations (if any)
+
+    Example:
+        >>> import metricate
+        >>> result = metricate.train_weights("training_data.csv")
+        >>> print(f"CV R²: {result.cv_scores['r2_mean']:.3f}")
+        >>> print(f"Sanity check: {'PASS' if result.sanity_check_passed else 'FAIL'}")
+        >>> result.weights.save("weights.json")
+    """
+    from metricate.training.learner import train_weights as _train_weights
+
+    return _train_weights(
+        csv_path,
+        regularization=regularization,
+        alpha=alpha,
+        auto_alpha=auto_alpha,
+        alphas=alphas,
+        run_cv=run_cv,
+        cv_splits=cv_splits,
+        run_sanity_check=run_sanity_check,
+    )
+
+
+def load_weights(path: str | Path):
+    """
+    Load learned metric weights from a JSON file.
+
+    Args:
+        path: Path to JSON file containing weights.
+
+    Returns:
+        MetricWeights: Object containing coefficients, bias, and metadata.
+
+    Raises:
+        FileNotFoundError: If path does not exist.
+        ValueError: If JSON is invalid or missing required fields.
+
+    Example:
+        >>> weights = metricate.load_weights("weights.json")
+        >>> result = metricate.evaluate("clustering.csv", weights=weights)
+        >>> print(f"Compound score: {result.compound_score:.3f}")
+    """
+    from metricate.training.weights import load_weights as _load_weights
+
+    return _load_weights(path)
+
+
 __all__ = [
     "evaluate",
     "compare",
@@ -375,5 +504,7 @@ __all__ = [
     "list_degradations",
     "generate_training_data",
     "generate_training_data_batch",
+    "train_weights",
+    "load_weights",
     "__version__",
 ]

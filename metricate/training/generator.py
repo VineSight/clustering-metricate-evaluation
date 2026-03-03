@@ -275,7 +275,13 @@ def generate_training_data(
     result.metadata["n_degradations_attempted"] = len(degrade_result.degradations)
     result.metadata["n_degradations_successful"] = len(records) - 1  # Minus original
 
+    # Auto-save training data to output directory
+    training_csv_path = output_dir / "training_data.csv"
+    result.to_csv(training_csv_path)
+    result.metadata["training_data_path"] = str(training_csv_path)
+
     print(f"✓ Done! Generated {len(records)} records ({result.metadata['n_degradations_successful']} degraded)")
+    print(f"✓ Saved to: {training_csv_path}")
     return result
 
 

@@ -56,6 +56,10 @@ class EvaluationResult:
     metrics: list[MetricValue] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    compound_score: float | None = None
+    compound_score_warning: str | None = None
+    final_score: float | None = None
+    final_score_warning: str | None = None
 
     def add_metric(self, metric_value: MetricValue) -> None:
         """Add a metric result to the evaluation."""
@@ -125,6 +129,37 @@ class EvaluationResult:
             "warnings": self.warnings,
         }
 
+    def to_json(self, indent: int = 2, include_metadata: bool = True) -> str:
+        """
+        Convert evaluation result to JSON string.
+
+        Args:
+            indent: JSON indentation level
+            include_metadata: Whether to include metadata and warnings
+
+        Returns:
+            JSON string representation
+        """
+        import json
+        data = {
+            "metrics": [m.to_dict() for m in self.metrics],
+        }
+        if include_metadata:
+            data["metadata"] = self.metadata
+            if self.warnings:
+                data["warnings"] = self.warnings
+        return json.dumps(data, indent=indent, default=str)
+
+    def to_csv(self) -> str:
+        """
+        Convert evaluation result to CSV string.
+
+        Returns:
+            CSV string representation
+        """
+        df = self.to_dataframe()
+        return df.to_csv(index=False)
+
     def summary(self) -> dict:
         """Generate a summary of the evaluation."""
         computed = self.computed_metrics()
@@ -150,6 +185,8 @@ class ComparisonResult:
     metric_winners: dict[str, str | None] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     winner_margin: int = 0
+    weighted_winner: str | None = None
+    compound_scores: dict[str, float] = field(default_factory=dict)
 
     def add_evaluation(self, name: str, result: EvaluationResult) -> None:
         """Add an evaluation result with a label."""
@@ -219,6 +256,20 @@ class ComparisonResult:
             "evaluations": {name: result.to_dict() for name, result in self.evaluations.items()},
         }
 
+    def to_table(self, format: str = "simple", show_winner: bool = True) -> str:
+        """
+        Format comparison result as a table.
+
+        Args:
+            format: Table format ('simple', 'markdown', 'grid')
+            show_winner: Whether to include winner column
+
+        Returns:
+            Formatted table string
+        """
+        from metricate.comparison.compare import compare_to_table
+        return compare_to_table(self, format=format, show_winner=show_winner)
+
 
 def _simple_table(df: pd.DataFrame) -> str:
     """Generate a simple text table."""
@@ -229,7 +280,7 @@ def _simple_table(df: pd.DataFrame) -> str:
     cols = list(df.columns)
     widths = {}
     for col in cols:
-        max_width = max(len(str(col)), df[col].astype(str).str.len().max())
+        max_width = max(len(str(col)), int(df[col].astype(str).str.len().max()))
         widths[col] = min(max_width, 30)  # Cap at 30 chars
 
     # Build header
