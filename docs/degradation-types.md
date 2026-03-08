@@ -20,6 +20,23 @@ Metricate provides 19 degradation types for systematically corrupting clustering
 
 ---
 
+## Excluded by Default
+
+The following 6 degradation types are **excluded by default** because they are problematic or redundant. They can still be used explicitly when needed.
+
+| Type | Category | Reason |
+|------|----------|--------|
+| `split_loosest` | Cluster Structure | Redundant with other split types |
+| `split_random` | Cluster Structure | Redundant with other split types |
+| `random_removal` | Point Manipulation | Can produce inconsistent results |
+| `remove_largest_clusters` | Cluster Removal | Dramatic structural change |
+| `remove_smallest_clusters` | Cluster Removal | Dramatic structural change |
+| `merge_nearest` | Cluster Structure | Often indistinguishable from good clustering |
+
+To use excluded types explicitly, pass them to the `--types` flag or include them in your `DegradationConfig`.
+
+---
+
 ## Label Manipulation
 
 These degradations change cluster assignments without modifying embeddings.

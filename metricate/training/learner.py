@@ -346,6 +346,9 @@ def _load_training_data(csv_path: str | Path) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Training data missing required columns: {missing}")
 
+    # Ensure clustering_name is string type (pandas may read numeric IDs as int)
+    df["clustering_name"] = df["clustering_name"].astype(str)
+
     # Check for at least one _norm column
     norm_cols = [c for c in df.columns if c.endswith("_norm")]
     if not norm_cols:

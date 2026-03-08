@@ -288,6 +288,9 @@ def degrade(
         )
 
         original_rows = len(degrader.df_original)
+        
+        # Get number of clusters for scaling (excluding noise cluster -1)
+        n_clusters = len([c for c in degrader.df_original[label_col].unique() if c != -1])
 
         # Generate degradations
         for deg_type in config.types:
@@ -314,7 +317,7 @@ def degrade(
                             n_rows=len(degraded_df),
                             original_rows=original_rows,
                             change_description=_get_change_description(
-                                deg_type, level, original_rows, len(degraded_df)
+                                deg_type, level, original_rows, len(degraded_df), n_clusters
                             ),
                         )
                     )
@@ -340,6 +343,9 @@ def degrade(
 
                     degraded_df.to_csv(filepath, index=False)
 
+                    # Estimate n_clusters for fallback path
+                    n_clusters_fallback = len([c for c in df[label_col].unique() if c != -1])
+                    
                     degradations.append(
                         DegradationEntry(
                             type=deg_type,
@@ -349,7 +355,7 @@ def degrade(
                             n_rows=len(degraded_df),
                             original_rows=original_rows,
                             change_description=_get_change_description(
-                                deg_type, level, original_rows, len(degraded_df)
+                                deg_type, level, original_rows, len(degraded_df), n_clusters_fallback
                             ),
                         )
                     )
@@ -393,6 +399,9 @@ def _apply_degradation(degrader, deg_type: str, fraction: float, seed: int) -> p
     """Apply a specific degradation type using ClusteringDegrader."""
     np.random.seed(seed)
 
+    # Get number of clusters (excluding noise cluster -1) for scaling
+    n_clusters = len([c for c in degrader.df_original[degrader.cluster_col].unique() if c != -1])
+
     # Map degradation types to methods
     if deg_type == "label_swap_random":
         return degrader.label_swap(fraction=fraction, swap_type="random")
@@ -401,22 +410,22 @@ def _apply_degradation(degrader, deg_type: str, fraction: float, seed: int) -> p
     elif deg_type == "label_swap_distant":
         return degrader.label_swap(fraction=fraction, swap_type="distant")
     elif deg_type == "merge_random":
-        n_merges = max(1, int(fraction * 10))
+        n_merges = max(1, int(fraction * n_clusters))
         return degrader.merge_clusters(n_merges=n_merges, merge_type="random")
     elif deg_type == "merge_nearest":
-        n_merges = max(1, int(fraction * 10))
+        n_merges = max(1, int(fraction * n_clusters))
         return degrader.merge_clusters(n_merges=n_merges, merge_type="nearest")
     elif deg_type == "merge_farthest":
-        n_merges = max(1, int(fraction * 10))
+        n_merges = max(1, int(fraction * n_clusters))
         return degrader.merge_clusters(n_merges=n_merges, merge_type="farthest")
     elif deg_type == "split_random":
-        n_splits = max(1, int(fraction * 10))
+        n_splits = max(1, int(fraction * n_clusters))
         return degrader.split_clusters(n_splits=n_splits, split_type="random")
     elif deg_type == "split_largest":
-        n_splits = max(1, int(fraction * 10))
+        n_splits = max(1, int(fraction * n_clusters))
         return degrader.split_clusters(n_splits=n_splits, split_type="largest")
     elif deg_type == "split_loosest":
-        n_splits = max(1, int(fraction * 10))
+        n_splits = max(1, int(fraction * n_clusters))
         return degrader.split_clusters(n_splits=n_splits, split_type="loosest")
     elif deg_type == "noise_injection":
         n_noise = max(10, int(len(degrader.df_original) * fraction))
@@ -428,14 +437,14 @@ def _apply_degradation(degrader, deg_type: str, fraction: float, seed: int) -> p
     elif deg_type == "boundary_reassignment":
         return degrader.boundary_reassignment(fraction=fraction)
     elif deg_type == "remove_smallest_clusters":
-        n_clusters = max(1, int(fraction * 10))
-        return degrader.remove_tight_clusters(n_clusters=n_clusters, criteria="smallest")
+        n_to_remove = max(1, int(fraction * n_clusters))
+        return degrader.remove_tight_clusters(n_clusters=n_to_remove, criteria="smallest")
     elif deg_type == "remove_largest_clusters":
-        n_clusters = max(1, int(fraction * 10))
-        return degrader.remove_tight_clusters(n_clusters=n_clusters, criteria="largest")
+        n_to_remove = max(1, int(fraction * n_clusters))
+        return degrader.remove_tight_clusters(n_clusters=n_to_remove, criteria="largest")
     elif deg_type == "remove_tightest_clusters":
-        n_clusters = max(1, int(fraction * 10))
-        return degrader.remove_tight_clusters(n_clusters=n_clusters, criteria="tightest")
+        n_to_remove = max(1, int(fraction * n_clusters))
+        return degrader.remove_tight_clusters(n_clusters=n_to_remove, criteria="tightest")
     elif deg_type == "embedding_perturbation":
         return degrader.embedding_perturbation(noise_scale=fraction)
     elif deg_type == "centroid_displacement":
@@ -479,20 +488,27 @@ def _save_degraded(df: pd.DataFrame, filepath: Path):
     df_to_save.to_csv(filepath, index=False)
 
 
-def _get_change_description(deg_type: str, level: str, original_rows: int, new_rows: int) -> str:
+def _get_change_description(
+    deg_type: str, level: str, original_rows: int, new_rows: int, n_clusters: int | None = None
+) -> str:
     """Generate human-readable description of the degradation."""
     fraction = LEVEL_FRACTIONS[level]
     pct = int(fraction * 100)
+    
+    # Use n_clusters if provided, otherwise fall back to fixed multiplier
+    cluster_scale = n_clusters if n_clusters else 10
 
     if deg_type.startswith("label_swap"):
         swap_type = deg_type.replace("label_swap_", "")
         return f"Swapped {pct}% of cluster labels ({swap_type} strategy)"
     elif deg_type.startswith("merge"):
         merge_type = deg_type.replace("merge_", "")
-        return f"Merged {max(1, int(fraction * 10))} cluster pairs ({merge_type})"
+        n_merges = max(1, int(fraction * cluster_scale))
+        return f"Merged {n_merges} cluster pairs ({merge_type})"
     elif deg_type.startswith("split"):
         split_type = deg_type.replace("split_", "")
-        return f"Split {max(1, int(fraction * 10))} clusters ({split_type})"
+        n_splits = max(1, int(fraction * cluster_scale))
+        return f"Split {n_splits} clusters ({split_type})"
     elif deg_type == "noise_injection":
         return f"Added {int(original_rows * fraction)} noise points"
     elif deg_type == "random_removal":
@@ -503,7 +519,8 @@ def _get_change_description(deg_type: str, level: str, original_rows: int, new_r
         return f"Reassigned {pct}% of boundary points"
     elif deg_type.startswith("remove_"):
         criteria = deg_type.replace("remove_", "").replace("_clusters", "")
-        return f"Removed {max(1, int(fraction * 10))} {criteria} clusters"
+        n_removed = max(1, int(fraction * cluster_scale))
+        return f"Removed {n_removed} {criteria} clusters"
     elif deg_type == "embedding_perturbation":
         return f"Added {pct}% noise to embeddings"
     elif deg_type == "centroid_displacement":
