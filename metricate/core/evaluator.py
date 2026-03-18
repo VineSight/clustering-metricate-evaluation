@@ -28,6 +28,16 @@ from metricate.core.reference import (
 )
 from metricate.output.report import EvaluationResult, MetricValue
 
+# Metrics that work without precomputation (use sklearn or compute their own values)
+NO_PRECOMPUTE_METRICS = {
+    "Silhouette",
+    "Davies-Bouldin",
+    "Calinski-Harabasz",
+    "SSE",
+    "NCI",
+    "Dunn Index",  # Has fallback for dist_matrix
+}
+
 if TYPE_CHECKING:
     from metricate.training.weights import MetricWeights
 
@@ -61,6 +71,7 @@ def calculate_all_metrics(
     labels: np.ndarray,
     exclude: list[str] | None = None,
     force_all: bool = False,
+    skip_precompute: bool = False,
 ) -> EvaluationResult:
     """
     Calculate all internal clustering metrics for the given data.
@@ -73,6 +84,10 @@ def calculate_all_metrics(
         labels: Cluster labels array
         exclude: List of metric names to skip
         force_all: If True, compute O(n²) metrics even on large datasets
+        skip_precompute: If True, skip the shared precomputation step. Each metric
+            will compute what it needs independently. This is slower overall but
+            avoids the O(n²) distance matrix computation upfront. Useful for
+            computing only metrics that don't need the distance matrix.
 
     Returns:
         EvaluationResult containing all computed metrics
@@ -108,13 +123,24 @@ def calculate_all_metrics(
             f"Unrecognized metric names in exclude list: {', '.join(sorted(unknown))}"
         )
 
-    # Precompute shared values
-    try:
-        precomputed = precompute_all(X, labels)
-    except Exception as e:
-        raise ComputationError(
-            metric="precomputation", message=f"Failed to precompute shared values: {e}"
+    # Precompute shared values (unless skipped)
+    if skip_precompute:
+        precomputed = {}  # Each metric will compute what it needs
+        # Auto-skip metrics that require precomputed values
+        needs_precompute = set(METRIC_FUNCTIONS.keys()) - NO_PRECOMPUTE_METRICS
+        auto_skip.update(needs_precompute)
+        result.add_warning(
+            f"Precomputation skipped. Only computing {len(NO_PRECOMPUTE_METRICS)} metrics "
+            f"that don't require shared precomputation: {', '.join(sorted(NO_PRECOMPUTE_METRICS))}. "
+            f"Skipping {len(needs_precompute)} metrics that need precomputed values."
         )
+    else:
+        try:
+            precomputed = precompute_all(X, labels)
+        except Exception as e:
+            raise ComputationError(
+                metric="precomputation", message=f"Failed to precompute shared values: {e}"
+            )
 
     # Calculate each metric
     for metric_name, metric_func in METRIC_FUNCTIONS.items():
@@ -132,12 +158,16 @@ def calculate_all_metrics(
 
         # Check if auto-skipped
         if metric_name in auto_skip:
+            if skip_precompute and metric_name not in NO_PRECOMPUTE_METRICS:
+                skip_reason = "Requires precomputation (skip_precompute=True)"
+            else:
+                skip_reason = f"Auto-skipped (n > {LARGE_DATASET_THRESHOLD:,})"
             result.add_metric(
                 MetricValue(
                     metric=metric_name,
                     value=None,
                     computed=False,
-                    skip_reason=f"Auto-skipped (n > {LARGE_DATASET_THRESHOLD:,})",
+                    skip_reason=skip_reason,
                 )
             )
             continue

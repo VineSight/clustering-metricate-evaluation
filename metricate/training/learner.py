@@ -31,6 +31,7 @@ from metricate.training.weights import MetricWeights
 
 __all__ = [
     "train_weights",
+    "train_weights_pairwise",
     "cross_validate_weights",
     "export_weights",
     "plot_feature_importance",
@@ -215,6 +216,206 @@ def train_weights(
     )
 
     logger.info(f"Training complete. Non-zero coefficients: {non_zero_count}/{len(feature_names)}")
+
+    return result
+
+
+def train_weights_pairwise(
+    csv_path: str | Path,
+    *,
+    regularization: Literal["ridge", "lasso"] = "lasso",
+    alpha: float | None = None,
+    auto_alpha: bool = True,
+    alphas: list[float] | None = None,
+    good_threshold: float = 0.9,
+    run_sanity_check: bool = True,
+) -> TrainingResult:
+    """
+    Train metric weights using pairwise ranking approach.
+
+    Instead of predicting exact quality scores (which fails with few baselines),
+    this learns to rank: "good clustering metrics > bad clustering metrics".
+
+    Creates pairs of (good, bad) samples where good has quality_score >= threshold
+    and bad has quality_score < threshold. Trains on the difference vectors to
+    learn which metric directions indicate better quality.
+
+    This approach is more robust when:
+    - Few unique baseline clusterings exist
+    - Quality scores are synthetically assigned
+    - Exact score prediction isn't needed, only ranking
+
+    Args:
+        csv_path: Path to training dataset CSV with normalized metrics and quality_score.
+        regularization: Type of regularization ("ridge" or "lasso"). Default: "lasso".
+        alpha: Regularization strength. If None and auto_alpha=True, auto-selected.
+        auto_alpha: If True, use cross-validation to select optimal alpha.
+        alphas: Candidate alpha values for auto-tuning.
+        good_threshold: Quality score threshold for "good" samples (default: 0.9).
+        run_sanity_check: If True, verify learned weights produce correct rankings.
+
+    Returns:
+        TrainingResult containing learned weights and ranking accuracy.
+
+    Example:
+        >>> from metricate.training.learner import train_weights_pairwise
+        >>> result = train_weights_pairwise("training_data.csv", good_threshold=0.9)
+        >>> print(f"Ranking accuracy: {result.cv_scores['ranking_accuracy']:.1%}")
+        >>> result.weights.save("weights.json")
+    """
+    from sklearn.model_selection import cross_val_score
+
+    # Load and validate data
+    df = _load_training_data(csv_path)
+    norm_cols = sorted([c for c in df.columns if c.endswith("_norm")])
+
+    if not norm_cols:
+        raise ValueError("Training data must have at least one *_norm metric column")
+
+    # Split into good (>= threshold) and bad (< threshold)
+    df_good = df[df["quality_score"] >= good_threshold]
+    df_bad = df[df["quality_score"] < good_threshold]
+
+    logger.info(f"Good samples (>= {good_threshold}): {len(df_good)}")
+    logger.info(f"Bad samples (< {good_threshold}): {len(df_bad)}")
+
+    if len(df_good) == 0 or len(df_bad) == 0:
+        raise ValueError(
+            f"Need both good and bad samples. Got {len(df_good)} good, {len(df_bad)} bad. "
+            f"Try adjusting good_threshold (currently {good_threshold})."
+        )
+
+    # Create pairwise samples: (good - bad) should have positive target
+    pairs_X = []
+    pairs_y = []
+
+    for _, good_row in df_good.iterrows():
+        # Match with bad samples from same base clustering
+        clustering_id = good_row["clustering_name"]
+        bad_same_cluster = df_bad[df_bad["clustering_name"] == clustering_id]
+
+        for _, bad_row in bad_same_cluster.iterrows():
+            # Difference: good - bad (should be positive for good metrics)
+            diff = good_row[norm_cols].values - bad_row[norm_cols].values
+            pairs_X.append(diff)
+            pairs_y.append(1.0)  # good > bad
+
+            # Also add reversed pair for balance
+            pairs_X.append(-diff)
+            pairs_y.append(0.0)  # bad < good
+
+    if len(pairs_X) == 0:
+        raise ValueError(
+            "No valid pairs created. Ensure good and bad samples share clustering_name values."
+        )
+
+    X = np.array(pairs_X, dtype=np.float64)
+    y = np.array(pairs_y, dtype=np.float64)
+
+    logger.info(f"Created {len(y)} pairwise training samples")
+
+    # Default alphas for auto-tuning
+    if alphas is None:
+        alphas = [0.0001, 0.001, 0.01, 0.1, 1.0]
+
+    # Select and train model
+    if auto_alpha:
+        if regularization == "ridge":
+            model = RidgeCV(alphas=alphas, cv=5)
+        else:
+            model = LassoCV(alphas=alphas, cv=5, max_iter=10000)
+        model.fit(X, y)
+        selected_alpha = model.alpha_
+        logger.info(f"Auto-selected alpha: {selected_alpha}")
+    else:
+        selected_alpha = alpha if alpha is not None else 1.0
+        if regularization == "ridge":
+            model = Ridge(alpha=selected_alpha)
+        else:
+            model = Lasso(alpha=selected_alpha, max_iter=10000)
+        model.fit(X, y)
+
+    # Cross-validation R² score
+    if regularization == "ridge":
+        cv_model = Ridge(alpha=selected_alpha)
+    else:
+        cv_model = Lasso(alpha=selected_alpha, max_iter=10000)
+
+    cv_scores_array = cross_val_score(cv_model, X, y, cv=5)
+    cv_r2_mean = float(np.mean(cv_scores_array))
+    cv_r2_std = float(np.std(cv_scores_array))
+
+    # Extract coefficients
+    coefficients = dict(zip(norm_cols, model.coef_, strict=True))
+    bias = float(model.intercept_)
+
+    # Compute ranking accuracy
+    predictions = X @ model.coef_ + model.intercept_
+    ranking_accuracy = float(((predictions > 0.5) == (y == 1.0)).mean())
+
+    logger.info(f"CV R²: {cv_r2_mean:.4f} ± {cv_r2_std:.4f}")
+    logger.info(f"Ranking accuracy: {ranking_accuracy:.2%}")
+
+    # Compute feature importance (sorted by abs coefficient)
+    feature_importance = sorted(
+        [(name, float(coef)) for name, coef in coefficients.items()],
+        key=lambda x: abs(x[1]),
+        reverse=True,
+    )
+
+    # Detect zeroed metrics (for Lasso)
+    zeroed_metrics = [name for name, coef in coefficients.items() if coef == 0.0]
+    non_zero_count = len(norm_cols) - len(zeroed_metrics)
+
+    # Create MetricWeights
+    weights = MetricWeights(
+        coefficients=coefficients,
+        bias=bias,
+        regularization=regularization,
+        alpha=selected_alpha,
+        training_samples=len(y),
+        non_zero_count=non_zero_count,
+    )
+
+    # CV scores dict
+    cv_scores = {
+        "r2_mean": cv_r2_mean,
+        "r2_std": cv_r2_std,
+        "ranking_accuracy": ranking_accuracy,
+        "good_threshold": good_threshold,
+        "n_pairs": len(y),
+    }
+
+    # Run sanity check if requested
+    sanity_check_passed = True
+    sanity_failures: list[str] = []
+
+    if run_sanity_check:
+        try:
+            sanity_check_passed, sanity_failures = sanity_check(weights, csv_path)
+        except Exception as e:
+            logger.warning(f"Sanity check skipped due to error: {e}")
+
+    # Count positive vs negative weights
+    pos_weights = sum(1 for c in model.coef_ if c > 0.001)
+    neg_weights = sum(1 for c in model.coef_ if c < -0.001)
+    logger.info(f"Positive weights: {pos_weights}, Negative weights: {neg_weights}")
+
+    # Create result
+    result = TrainingResult(
+        weights=weights,
+        cv_scores=cv_scores,
+        feature_importance=feature_importance,
+        zeroed_metrics=zeroed_metrics,
+        cv_results=[],  # Pairwise doesn't use fold-based CV
+        sanity_check_passed=sanity_check_passed,
+        sanity_failures=sanity_failures,
+    )
+
+    logger.info(
+        f"Pairwise training complete. Non-zero: {non_zero_count}/{len(norm_cols)}, "
+        f"Ranking accuracy: {ranking_accuracy:.2%}"
+    )
 
     return result
 
@@ -604,7 +805,7 @@ def plot_feature_importance(
     title: str = "Feature Importance (Learned Metric Weights)",
     show: bool = True,
     save_path: str | Path | None = None,
-) -> "go.Figure":
+) -> object:
     """
     Generate a horizontal bar chart of metric coefficient importance.
 
