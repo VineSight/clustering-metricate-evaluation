@@ -29,6 +29,9 @@ metricate --version
 | `train` | Train metric weights from labeled data |
 | `degrade` | Generate degraded versions of a clustering |
 | `list` | List available metrics or degradation types |
+| `labricate experiment` | Run hyperparameter experiments |
+| `labricate validate` | Validate config and embeddings |
+| `labricate resume` | Resume interrupted experiment |
 | `web` | Start the browser-based UI |
 
 ---
@@ -258,6 +261,157 @@ metricate list metrics
 
 # List all 19 degradation types
 metricate list degradations
+```
+
+---
+
+## `metricate labricate`
+
+Hyperparameter experimentation commands.
+
+### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `experiment` | Run single-param or grid search experiments |
+| `validate` | Validate configuration and embeddings |
+| `resume` | Resume an interrupted experiment |
+
+---
+
+### `metricate labricate experiment`
+
+Run hyperparameter experiments.
+
+#### Usage
+
+```bash
+metricate labricate experiment [OPTIONS]
+```
+
+#### Options
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--embeddings` | `-e` | required | Path to embeddings (CSV or NPY) |
+| `--config` | `-c` | required | Path to config JSON |
+| `--param` | `-p` | none | Parameter path for single-param experiment |
+| `--values` | `-v` | none | Comma-separated values (e.g., "5,10,15") |
+| `--grid` | `-g` | none | Grid search params (e.g., "param1=1,2;param2=a,b") |
+| `--output-dir` | `-o` | ./experiments | Output directory |
+| `--output-format` | `-f` | json | json, csv, or both |
+| `--workers` | `-w` | 1 | Number of parallel workers |
+| `--include-metrics` | | none | Comma-separated metrics to include |
+| `--exclude-metrics` | | none | Comma-separated metrics to exclude |
+| `--verbose` | | true | Print progress |
+
+#### Examples
+
+```bash
+# Single parameter experiment
+metricate labricate experiment \
+    --embeddings embeddings.csv \
+    --config config.json \
+    --param "hdbscan.min_cluster_size" \
+    --values "5,10,15,20,30,50"
+
+# With parallel execution
+metricate labricate experiment \
+    --embeddings embeddings.npy \
+    --config config.json \
+    --param "umap.n_neighbors" \
+    --values "5,10,15,20,30,50" \
+    --workers 4
+
+# Grid search (multiple parameters)
+metricate labricate experiment \
+    --embeddings embeddings.csv \
+    --config config.json \
+    --grid "hdbscan.min_cluster_size=5,10,15;umap.n_neighbors=10,15,20" \
+    --workers 4
+
+# Filter metrics for speed
+metricate labricate experiment \
+    --embeddings embeddings.csv \
+    --config config.json \
+    --param "hdbscan.min_cluster_size" \
+    --values "10,20,30" \
+    --exclude-metrics "Gamma,Tau,G-plus"
+
+# Output both JSON and CSV
+metricate labricate experiment \
+    --embeddings embeddings.csv \
+    --config config.json \
+    --param "hdbscan.min_cluster_size" \
+    --values "10,20,30" \
+    --output-format both \
+    --output-dir ./my_results
+```
+
+---
+
+### `metricate labricate validate`
+
+Validate configuration and embeddings before running experiments.
+
+#### Usage
+
+```bash
+metricate labricate validate [OPTIONS]
+```
+
+#### Options
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--config` | `-c` | Path to config JSON to validate |
+| `--embeddings` | `-e` | Path to embeddings file to validate |
+
+#### Examples
+
+```bash
+# Validate config only
+metricate labricate validate --config config.json
+
+# Validate embeddings only
+metricate labricate validate --embeddings embeddings.csv
+
+# Validate both
+metricate labricate validate --config config.json --embeddings embeddings.csv
+```
+
+---
+
+### `metricate labricate resume`
+
+Resume an interrupted experiment from checkpoint.
+
+#### Usage
+
+```bash
+metricate labricate resume EXPERIMENT_DIR [OPTIONS]
+```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `EXPERIMENT_DIR` | Path to experiment directory with checkpoint |
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--force` | Force restart even if config mismatches |
+
+#### Examples
+
+```bash
+# Resume from checkpoint
+metricate labricate resume ./experiments/my_experiment_20260318_143022/
+
+# Force restart (ignore config mismatch)
+metricate labricate resume ./experiments/my_experiment_20260318_143022/ --force
 ```
 
 ---

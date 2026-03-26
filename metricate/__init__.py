@@ -42,6 +42,9 @@ import pandas as pd
 if TYPE_CHECKING:
     from metricate.training.weights import MetricWeights
 
+# Import labricate submodule for hyperparameter experimentation
+from metricate import labricate
+
 __version__ = "0.1.0"
 
 
@@ -506,5 +509,6 @@ __all__ = [
     "generate_training_data_batch",
     "train_weights",
     "load_weights",
+    "labricate",
     "__version__",
 ]

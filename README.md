@@ -284,6 +284,83 @@ for category, types in degradations.items():
     print(f"{category}: {types}")
 ```
 
+### Hyperparameter Experimentation (Labricate)
+
+Labricate helps you find optimal clustering hyperparameters by running experiments with varying parameter values and evaluating each configuration with Metricate.
+
+```python
+from metricate.labricate import Experiment
+
+# Load your embeddings (numpy array, DataFrame, or CSV path)
+embeddings = "embeddings.csv"
+
+# Define base configuration
+config = {
+    "random_seed": 42,
+    "umap": {
+        "n_neighbors": 15,
+        "n_components": 5,
+        "min_dist": 0.0,
+        "metric": "cosine"
+    },
+    "clustering_algorithm": "hdbscan",
+    "hdbscan": {
+        "min_cluster_size": 10,
+        "min_samples": 5
+    }
+}
+
+# Create experiment
+exp = Experiment(embeddings, config)
+
+# Test different min_cluster_size values
+result = exp.run(
+    param="hdbscan.min_cluster_size",
+    values=[5, 10, 15, 20, 30, 50]
+)
+
+# View results
+print(result.summary)
+df = result.to_dataframe()
+print(df[["hdbscan.min_cluster_size", "n_clusters", "Silhouette", "Davies-Bouldin"]])
+
+# Find best configuration
+best = result.get_best_run("Silhouette")
+print(f"Best Silhouette: {best.param_values['hdbscan.min_cluster_size']}")
+```
+
+**Grid Search (Multiple Parameters):**
+
+```python
+result = exp.run_grid(
+    params={
+        "umap.n_neighbors": [10, 15, 20],
+        "hdbscan.min_cluster_size": [10, 20, 30]
+    },
+    n_workers=4  # Parallel execution
+)
+# Runs 3 × 3 = 9 combinations
+```
+
+**CLI:**
+
+```bash
+# Single parameter experiment
+metricate labricate experiment \
+    --embeddings embeddings.csv \
+    --config config.json \
+    --param "hdbscan.min_cluster_size" \
+    --values "5,10,15,20"
+
+# Grid search
+metricate labricate experiment \
+    --embeddings embeddings.csv \
+    --config config.json \
+    --grid "hdbscan.min_cluster_size=5,10,15;umap.n_neighbors=10,15"
+```
+
+See `docs/labricate.md` for full documentation.
+
 ## Command Line Interface
 
 ```bash
@@ -340,6 +417,23 @@ metricate degrade clustering.csv ./output/ --no-visualize
 # List available options
 metricate list metrics
 metricate list degradations
+
+# Hyperparameter experimentation (Labricate)
+metricate labricate experiment \
+  --embeddings embeddings.csv \
+  --config config.json \
+  --param "hdbscan.min_cluster_size" \
+  --values "5,10,15,20"
+
+# Grid search with multiple parameters
+metricate labricate experiment \
+  --embeddings embeddings.csv \
+  --config config.json \
+  --grid "hdbscan.min_cluster_size=5,10,15;umap.n_neighbors=10,15" \
+  --workers 4
+
+# Resume interrupted experiment
+metricate labricate resume ./experiments/my_experiment_20240101_120000/
 
 # Start the web UI
 metricate web --port 5000

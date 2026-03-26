@@ -11,9 +11,10 @@
 3. [Metrics Reference](metrics-reference.md)
 4. [Degradation Types](degradation-types.md)
 5. [Training Weights](training-weights.md)
-6. [CLI Reference](cli-reference.md)
-7. [Web UI](web-ui.md)
-8. [Input Formats](input-formats.md)
+6. [Labricate (Hyperparameter Experimentation)](labricate.md)
+7. [CLI Reference](cli-reference.md)
+8. [Web UI](web-ui.md)
+9. [Input Formats](input-formats.md)
 
 ---
 
@@ -72,6 +73,13 @@ result = metricate.degrade("data.csv", "./output/")
 # Train metric weights
 training_result = metricate.train_weights("training_data.csv")
 training_result.save_weights("weights.json")
+
+# Hyperparameter experimentation with Labricate
+from metricate.labricate import Experiment
+
+exp = Experiment(embeddings, config)
+result = exp.run(param="hdbscan.min_cluster_size", values=[5, 10, 15, 20])
+best = result.get_best_run("Silhouette")
 ```
 
 ---

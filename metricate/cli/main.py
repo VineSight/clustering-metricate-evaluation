@@ -678,5 +678,11 @@ def main():
     cli()
 
 
+# Register labricate subcommand group
+from metricate.cli.labricate import labricate
+
+cli.add_command(labricate)
+
+
 if __name__ == "__main__":
     main()
