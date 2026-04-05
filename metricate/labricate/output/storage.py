@@ -147,7 +147,7 @@ def save_run_csv(
 
 def _result_to_dict(result: "ExperimentResult") -> dict[str, Any]:
     """Convert ExperimentResult to a serializable dictionary."""
-    return {
+    data = {
         "experiment_id": result.experiment_id,
         "experiment_name": result.experiment_name,
         "config": result.config,
@@ -161,6 +161,18 @@ def _result_to_dict(result: "ExperimentResult") -> dict[str, Any]:
         },
         "output_path": result.output_path,
     }
+    # Add best_run if present (FR-004)
+    if result.best_run is not None:
+        data["best_run"] = {
+            "run_id": result.best_run.run_id,
+            "param_values": result.best_run.param_values,
+            "score": result.best_run.score,
+            "score_type": result.best_run.score_type,
+            "tied_run_ids": result.best_run.tied_run_ids,
+        }
+    else:
+        data["best_run"] = None
+    return data
 
 
 def _run_to_dict(run: "RunResult") -> dict[str, Any]:
@@ -169,6 +181,7 @@ def _run_to_dict(run: "RunResult") -> dict[str, Any]:
     return {
         "run_id": run.run_id,
         "param_values": run.param_values,
+        "compound_score": run.compound_score,  # None if no weights
         "pipeline_result": {
             "run_id": pr.run_id,
             "config": pr.config,

@@ -189,6 +189,19 @@ def labricate():
     default=False,
     help="Show detailed timing logs",
 )
+@click.option(
+    "--weights",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to weights JSON file for compound scoring",
+)
+@click.option(
+    "--mode",
+    "-m",
+    type=click.Choice(["light", "heavy"]),
+    default="heavy",
+    help="Computation mode: 'light' excludes expensive O(n²) metrics",
+)
 def experiment(
     embeddings: str,
     config: str,
@@ -207,6 +220,8 @@ def experiment(
     name: str | None,
     quiet: bool,
     verbose: bool,
+    weights: str | None,
+    mode: str,
 ) -> None:
     """Run a hyperparameter experiment.
 
@@ -266,6 +281,7 @@ def experiment(
             name=name,
             output_dir=output_dir,
             output_format=output_format,
+            weights=weights,
         )
 
         # Run experiment
@@ -287,6 +303,7 @@ def experiment(
                 resume=resume,
                 force=force,
                 verbose=verbose_output,
+                mode=mode,
             )
         else:
             if not quiet:
@@ -304,6 +321,7 @@ def experiment(
                 resume=resume,
                 force=force,
                 verbose=verbose_output,
+                mode=mode,
             )
 
         # Create output directory and save results
@@ -361,6 +379,18 @@ def experiment(
             )
             click.echo(f"Duration: {result.summary.total_duration_seconds:.1f}s")
             click.echo(f"Results saved to: {exp_dir}")
+
+            # Display best run if available (T053)
+            if result.best_run is not None:
+                click.echo("")
+                click.echo("-" * 50)
+                click.echo("Best Run")
+                click.echo("-" * 50)
+                click.echo(f"Run ID: {result.best_run.run_id}")
+                click.echo(f"Score: {result.best_run.score:.4f} ({result.best_run.score_type})")
+                click.echo(f"Params: {result.best_run.param_values}")
+                if result.best_run.tied_run_ids:
+                    click.echo(f"Tied with: {result.best_run.tied_run_ids}")
 
         # Exit code based on results
         if result.summary.completed_runs == 0:

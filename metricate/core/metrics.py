@@ -623,7 +623,9 @@ def score_function_index(
     global_mean = X.mean(axis=0)
     bdc = np.mean([np.linalg.norm(centroids[l] - global_mean) for l in unique])
     wcd = np.mean([np.mean(np.linalg.norm(X[labels == l] - centroids[l], axis=1)) for l in unique])
-    inner = np.clip(bdc - wcd, -50, 50)
+    # Clip to [-6, 6] to prevent overflow in double exponential
+    # exp(exp(6.5)) ≈ exp(665) which is near float64 max
+    inner = np.clip(bdc - wcd, -6, 6)
     return 1.0 - 1.0 / np.exp(np.exp(inner))
 
 

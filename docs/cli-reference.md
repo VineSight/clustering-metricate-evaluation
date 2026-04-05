@@ -303,6 +303,8 @@ metricate labricate experiment [OPTIONS]
 | `--workers` | `-w` | 1 | Number of parallel workers |
 | `--include-metrics` | | none | Comma-separated metrics to include |
 | `--exclude-metrics` | | none | Comma-separated metrics to exclude |
+| `--weights` | | none | Path to weights JSON for compound scoring |
+| `--mode` | `-m` | heavy | Computation mode: "light" or "heavy" |
 | `--verbose` | | true | Print progress |
 
 #### Examples
@@ -329,6 +331,22 @@ metricate labricate experiment \
     --config config.json \
     --grid "hdbscan.min_cluster_size=5,10,15;umap.n_neighbors=10,15,20" \
     --workers 4
+
+# With learned weights for compound scoring
+metricate labricate experiment \
+    --embeddings embeddings.csv \
+    --config config.json \
+    --param "hdbscan.min_cluster_size" \
+    --values "10,20,30" \
+    --weights ./learned_weights.json
+
+# Light mode for fast experimentation (excludes expensive metrics)
+metricate labricate experiment \
+    --embeddings embeddings.csv \
+    --config config.json \
+    --param "hdbscan.min_cluster_size" \
+    --values "10,20,30" \
+    --mode light
 
 # Filter metrics for speed
 metricate labricate experiment \

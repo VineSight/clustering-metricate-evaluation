@@ -312,8 +312,11 @@ def compute_compound_score(
             for m in expected_metrics
         )
 
-    # Add bias and clip to [0, 1]
+    # Add bias
     score = weighted_sum + weights.bias
-    score = max(0.0, min(1.0, score))
+
+    # For pairwise ranking models, scores are unbounded (used for relative comparison)
+    # Don't clip to [0, 1] as the model wasn't trained to produce bounded outputs
+    # The ranking accuracy is what matters, not absolute score values
 
     return score, warning_message

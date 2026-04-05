@@ -32,6 +32,15 @@ from metricate.labricate.utils.logging import (
     setup_progress,
     timer,
 )
+from metricate.labricate.core.modes import ComputationMode, apply_mode_exclusions
+from metricate.labricate.core.scoring import (
+    BestRunInfo,
+    WeightCoverageWarning,
+    check_weight_coverage,
+    compute_run_scores,
+    find_best_run,
+)
+from metricate.training.weights import MetricWeights
 
 if TYPE_CHECKING:
     from metricate.labricate.pipelines.base import Pipeline
@@ -70,6 +79,7 @@ class RunResult:
     param_values: dict[str, Any]
     pipeline_result: PipelineResult
     metrics: list[MetricResult]
+    compound_score: float | None = None
 
 
 @dataclass
@@ -103,13 +113,21 @@ class ExperimentResult:
     runs: list[RunResult]
     summary: ExperimentSummary
     output_path: str | None = None
+    best_run: BestRunInfo | None = None
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert results to a pandas DataFrame.
 
         Returns:
-            DataFrame with one row per run, columns for param values and metrics.
+            DataFrame with one row per run, columns for param values, metrics,
+            compound_score (if weights used), and is_best_run boolean.
         """
+        # Build set of best run IDs (including ties)
+        best_run_ids: set[int] = set()
+        if self.best_run is not None:
+            best_run_ids.add(self.best_run.run_id)
+            best_run_ids.update(self.best_run.tied_run_ids)
+
         rows = []
         for run in self.runs:
             row = {"run_id": run.run_id}
@@ -119,29 +137,48 @@ class ExperimentResult:
             row["status"] = run.pipeline_result.status
             for metric in run.metrics:
                 row[metric.name] = metric.value
+            # Add compound_score (None if no weights)
+            row["compound_score"] = run.compound_score
+            # Add is_best_run flag
+            row["is_best_run"] = run.run_id in best_run_ids
             rows.append(row)
         return pd.DataFrame(rows)
 
     def get_best_run(
         self,
-        metric: str,
+        metric: str | None = None,
         direction: str | None = None,
     ) -> RunResult:
-        """Get the run with the best value for a metric.
+        """Get the run with the best value for a metric or compound_score.
+
+        If weights were provided during the experiment and metric is None,
+        returns the run with the best compound_score. Otherwise, uses the
+        specified metric.
 
         Args:
-            metric: Metric name to optimize.
+            metric: Metric name to optimize. If None and compound_score available,
+                uses compound_score. Otherwise defaults to 'Silhouette'.
             direction: "higher" or "lower". Auto-detected if None.
 
         Returns:
-            RunResult with best metric value.
+            RunResult with best metric/compound_score value.
 
         Raises:
-            ValueError: If metric not found in results.
+            ValueError: If metric not found in results or no completed runs.
         """
         completed_runs = [r for r in self.runs if r.pipeline_result.status == "completed"]
         if not completed_runs:
             raise ValueError("No completed runs to compare")
+
+        # If metric not specified, use compound_score if available
+        if metric is None:
+            if self.best_run is not None:
+                # Return the run matching best_run
+                for run in completed_runs:
+                    if run.run_id == self.best_run.run_id:
+                        return run
+            # Fall back to Silhouette
+            metric = "Silhouette"
 
         # Find direction from first run's metrics if not provided
         if direction is None:
@@ -182,6 +219,7 @@ class Experiment:
         output_dir: str | Path = "./experiments",
         output_format: Literal["json", "csv", "both"] = "json",
         pipeline: Pipeline | Callable | None = None,
+        weights: str | Path | dict[str, Any] | None = None,
     ) -> None:
         """Initialize an experiment.
 
@@ -192,9 +230,13 @@ class Experiment:
             output_dir: Directory for results.
             output_format: Output format ("json", "csv", "both").
             pipeline: Custom pipeline function (default: BERTopicPipeline).
+            weights: Weights for compound scoring (file path, dict, or None).
+                If provided, runs will have compound_score computed and
+                best_run will be determined by compound_score instead of
+                single metric.
 
         Raises:
-            ValueError: If embeddings or config are invalid.
+            ValueError: If embeddings, config, or weights are invalid.
             FileNotFoundError: If file paths don't exist.
         """
         # Load embeddings
@@ -219,6 +261,96 @@ class Experiment:
             self.pipeline = BERTopicPipeline()
         else:
             self.pipeline = pipeline
+
+        # Load and validate weights (FR-001, FR-002)
+        self._weights: MetricWeights | None = None
+        if weights is not None:
+            self._weights = self._load_weights(weights)
+
+    def _load_weights(self, weights: str | Path | dict[str, Any]) -> MetricWeights:
+        """Load and validate weights from file path or dict.
+
+        Automatically normalizes coefficient keys by appending '_norm' suffix
+        if not already present (e.g., 'Silhouette' -> 'Silhouette_norm').
+
+        Args:
+            weights: File path (str/Path) or dict with coefficients and bias.
+
+        Returns:
+            MetricWeights instance.
+
+        Raises:
+            FileNotFoundError: If file path doesn't exist.
+            ValueError: If weights are invalid (missing fields, invalid format).
+        """
+        import json
+
+        if isinstance(weights, (str, Path)):
+            # Load from file
+            path = Path(weights)
+            if not path.exists():
+                raise FileNotFoundError(f"Weights file not found: {path}")
+            try:
+                with open(path) as f:
+                    data = json.load(f)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON in weights file: {e}") from e
+        else:
+            data = weights
+
+        # Validate basic structure (must have coefficients and bias)
+        if "coefficients" not in data:
+            raise ValueError(
+                "Invalid weights: missing required 'coefficients' field. "
+                "Weights must include {'coefficients': {...}, 'bias': <float>}"
+            )
+        if "bias" not in data:
+            raise ValueError(
+                "Invalid weights: missing required 'bias' field. "
+                "Weights must include {'coefficients': {...}, 'bias': <float>}"
+            )
+        if not isinstance(data["coefficients"], dict):
+            raise ValueError("Invalid weights: 'coefficients' must be a dict")
+
+        coefficients = data["coefficients"]
+
+        # Validate coefficients is not empty
+        if len(coefficients) == 0:
+            raise ValueError(
+                "Invalid weights: 'coefficients' is empty. "
+                "Weights must contain at least one metric coefficient."
+            )
+
+        # Validate coefficient values are numeric
+        invalid_values = []
+        for key, value in coefficients.items():
+            if not isinstance(value, (int, float)):
+                invalid_values.append(f"{key}={value!r}")
+        if invalid_values:
+            raise ValueError(
+                f"Invalid weights: coefficient values must be numeric, "
+                f"got non-numeric values: {', '.join(invalid_values)}"
+            )
+
+        # Validate bias is numeric
+        if not isinstance(data["bias"], (int, float)):
+            raise ValueError(
+                f"Invalid weights: 'bias' must be numeric, got {type(data['bias']).__name__}"
+            )
+
+        # Normalize coefficient keys: add _norm suffix if missing
+        normalized_coefficients = {}
+        for key, value in coefficients.items():
+            if key.endswith("_norm"):
+                normalized_coefficients[key] = value
+            else:
+                normalized_coefficients[f"{key}_norm"] = value
+
+        return MetricWeights(
+            coefficients=normalized_coefficients,
+            bias=data["bias"],
+            version=data.get("version", "1.0"),
+        )
 
     def validate_param(self, param: str) -> bool:
         """Validate a parameter path against the config.
@@ -250,6 +382,8 @@ class Experiment:
         resume: bool = False,
         force: bool = False,
         verbose: bool = True,
+        mode: ComputationMode = "heavy",
+        best_metric: str = "Silhouette",
     ) -> ExperimentResult:
         """Run a single-parameter experiment.
 
@@ -264,6 +398,10 @@ class Experiment:
             resume: Whether to resume from checkpoint.
             force: Force start fresh if config mismatch on resume.
             verbose: Whether to print progress.
+            mode: Computation mode - "light" excludes expensive O(n²) metrics,
+                "heavy" computes all metrics. Default is "heavy".
+            best_metric: Metric to use for best_run when weights not provided.
+                Default is "Silhouette".
 
         Returns:
             ExperimentResult with all run results and metrics.
@@ -271,6 +409,8 @@ class Experiment:
         Raises:
             ValueError: If param path is invalid or values is empty.
         """
+        import warnings
+
         # Validate inputs
         if not values:
             raise ValueError("values list cannot be empty")
@@ -278,6 +418,19 @@ class Experiment:
         invalid_paths = validate_param_paths(self.config, [param])
         if invalid_paths:
             raise ValueError(f"Invalid parameter path: '{param}'")
+
+        # Apply mode exclusions (FR-007, FR-008)
+        final_exclude_metrics = apply_mode_exclusions(
+            mode=mode,
+            exclude_metrics=exclude_metrics,
+            include_metrics=include_metrics,
+        )
+
+        # Check weight coverage warning when using weights with exclusions (FR-017)
+        if self._weights is not None and final_exclude_metrics:
+            warning_msg = check_weight_coverage(self._weights, final_exclude_metrics)
+            if warning_msg:
+                warnings.warn(warning_msg, WeightCoverageWarning, stacklevel=2)
 
         # Generate experiment ID
         experiment_id = f"{self.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -344,11 +497,11 @@ class Experiment:
                         tmp_path = tmp.name
 
                     try:
-                        # Run evaluation
+                        # Run evaluation with mode-adjusted exclusions
                         eval_result = evaluate(
                             tmp_path,
                             label_col="cluster_id",
-                            exclude=exclude_metrics,
+                            exclude=final_exclude_metrics if final_exclude_metrics else None,
                         )
                     finally:
                         # Clean up temp file
@@ -448,6 +601,13 @@ class Experiment:
             total_duration_seconds=total_duration,
         )
 
+        # Compute compound scores if weights provided (FR-003)
+        if self._weights is not None:
+            compute_run_scores(runs, self._weights)
+
+        # Find best run (FR-004, FR-014)
+        best_run_info = find_best_run(runs, self._weights, best_metric=best_metric)
+
         # Create experiment result
         result = ExperimentResult(
             experiment_id=experiment_id,
@@ -462,11 +622,31 @@ class Experiment:
             },
             runs=runs,
             summary=summary,
+            best_run=best_run_info,
         )
+
+        # Save results based on output_format
+        from metricate.labricate.output.storage import save_results_csv, save_results_json
+
+        if self.output_format in ("json", "both"):
+            json_path = save_results_json(result, self.output_dir)
+            result.output_path = str(json_path.parent)
+            if verbose:
+                print(f"\n  Saved JSON: {json_path}")
+
+        if self.output_format in ("csv", "both"):
+            csv_path = save_results_csv(result, self.output_dir)
+            result.output_path = str(csv_path.parent)
+            if verbose:
+                print(f"  Saved CSV: {csv_path}")
 
         if verbose:
             print(f"\n✓ Experiment complete: {completed}/{total_runs} runs succeeded")
             print(f"  Total duration: {format_duration(total_duration)}")
+            if best_run_info is not None:
+                print(f"  Best run: {best_run_info.run_id} ({best_run_info.score_type}={best_run_info.score:.4f})")
+                if best_run_info.tied_run_ids:
+                    print(f"  (tied with run_ids: {best_run_info.tied_run_ids})")
 
         return result
 
@@ -481,6 +661,8 @@ class Experiment:
         resume: bool = False,
         force: bool = False,
         verbose: bool = True,
+        mode: ComputationMode = "heavy",
+        best_metric: str = "Silhouette",
     ) -> ExperimentResult:
         """Run a grid search over multiple parameters.
 
@@ -495,6 +677,10 @@ class Experiment:
             resume: Whether to resume from checkpoint.
             force: Force start fresh if config mismatch on resume.
             verbose: Whether to print progress.
+            mode: Computation mode - "light" excludes expensive O(n²) metrics,
+                "heavy" computes all metrics. Default is "heavy".
+            best_metric: Metric to use for best_run when weights not provided.
+                Default is "Silhouette".
 
         Returns:
             ExperimentResult with all run results and metrics.
@@ -503,6 +689,7 @@ class Experiment:
             ValueError: If params is empty, any param path is invalid, or values is empty.
         """
         import itertools
+        import warnings
 
         # Validate inputs
         if not params:
@@ -516,6 +703,19 @@ class Experiment:
         invalid_paths = validate_param_paths(self.config, list(params.keys()))
         if invalid_paths:
             raise ValueError(f"Invalid parameter paths: {', '.join(invalid_paths)}")
+
+        # Apply mode exclusions (FR-007, FR-008)
+        final_exclude_metrics = apply_mode_exclusions(
+            mode=mode,
+            exclude_metrics=exclude_metrics,
+            include_metrics=include_metrics,
+        )
+
+        # Check weight coverage warning when using weights with exclusions (FR-017)
+        if self._weights is not None and final_exclude_metrics:
+            warning_msg = check_weight_coverage(self._weights, final_exclude_metrics)
+            if warning_msg:
+                warnings.warn(warning_msg, WeightCoverageWarning, stacklevel=2)
 
         # Generate all parameter combinations using itertools.product
         param_names = list(params.keys())
@@ -594,11 +794,11 @@ class Experiment:
                         tmp_path = tmp.name
 
                     try:
-                        # Run evaluation
+                        # Run evaluation with mode-adjusted exclusions
                         eval_result = evaluate(
                             tmp_path,
                             label_col="cluster_id",
-                            exclude=exclude_metrics,
+                            exclude=final_exclude_metrics if final_exclude_metrics else None,
                         )
                     finally:
                         # Clean up temp file
@@ -697,6 +897,13 @@ class Experiment:
             total_duration_seconds=total_duration,
         )
 
+        # Compute compound scores if weights provided (FR-003)
+        if self._weights is not None:
+            compute_run_scores(runs, self._weights)
+
+        # Find best run (FR-004, FR-014)
+        best_run_info = find_best_run(runs, self._weights, best_metric=best_metric)
+
         # Create experiment result
         result = ExperimentResult(
             experiment_id=experiment_id,
@@ -710,10 +917,30 @@ class Experiment:
             },
             runs=runs,
             summary=summary,
+            best_run=best_run_info,
         )
+
+        # Save results based on output_format
+        from metricate.labricate.output.storage import save_results_csv, save_results_json
+
+        if self.output_format in ("json", "both"):
+            json_path = save_results_json(result, self.output_dir)
+            result.output_path = str(json_path.parent)
+            if verbose:
+                print(f"\n  Saved JSON: {json_path}")
+
+        if self.output_format in ("csv", "both"):
+            csv_path = save_results_csv(result, self.output_dir)
+            result.output_path = str(csv_path.parent)
+            if verbose:
+                print(f"  Saved CSV: {csv_path}")
 
         if verbose:
             print(f"\n✓ Grid search complete: {completed}/{total_runs} runs succeeded")
             print(f"  Total duration: {format_duration(total_duration)}")
+            if best_run_info is not None:
+                print(f"  Best run: {best_run_info.run_id} ({best_run_info.score_type}={best_run_info.score:.4f})")
+                if best_run_info.tied_run_ids:
+                    print(f"  (tied with run_ids: {best_run_info.tied_run_ids})")
 
         return result

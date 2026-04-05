@@ -310,3 +310,143 @@ class TestResumeCommand:
         result = runner.invoke(labricate, ["resume", str(exp_dir)])
         assert result.exit_code != 0
         assert "checkpoint" in result.output.lower()
+
+
+class TestWeightsAndModeOptions:
+    """Tests for --weights and --mode CLI options (T054-T056)."""
+
+    def test_experiment_help_shows_weights_option(self, runner):
+        """TC-025: experiment --help shows --weights option."""
+        result = runner.invoke(labricate, ["experiment", "--help"])
+        assert result.exit_code == 0
+        assert "--weights" in result.output
+        assert "weights JSON file" in result.output.lower() or "compound scoring" in result.output.lower()
+
+    def test_experiment_help_shows_mode_option(self, runner):
+        """TC-026: experiment --help shows --mode option."""
+        result = runner.invoke(labricate, ["experiment", "--help"])
+        assert result.exit_code == 0
+        assert "--mode" in result.output
+        assert "-m" in result.output
+        assert "light" in result.output
+        assert "heavy" in result.output
+
+    def test_cli_weights_option_accepts_path(
+        self, runner, embeddings_file, config_file, tmp_path
+    ):
+        """T054: --weights accepts valid JSON path."""
+        weights_file = tmp_path / "weights.json"
+        weights_file.write_text(json.dumps({
+            "coefficients": {"Silhouette_norm": 0.5, "Davies-Bouldin_norm": -0.3},
+            "bias": 0.2
+        }))
+
+        result = runner.invoke(
+            labricate,
+            [
+                "experiment",
+                "--embeddings", str(embeddings_file),
+                "--config", str(config_file),
+                "--param", "hdbscan.min_cluster_size",
+                "--values", "5,10",
+                "--weights", str(weights_file),
+                "--output-dir", str(tmp_path / "output"),
+                "--quiet",
+            ],
+        )
+        # Should either succeed or fail gracefully
+        assert result.exit_code in [0, 4]  # 0=success, 4=partial failure
+
+    def test_cli_weights_nonexistent_file_error(
+        self, runner, embeddings_file, config_file, tmp_path
+    ):
+        """--weights with non-existent file shows error."""
+        result = runner.invoke(
+            labricate,
+            [
+                "experiment",
+                "--embeddings", str(embeddings_file),
+                "--config", str(config_file),
+                "--param", "hdbscan.min_cluster_size",
+                "--values", "5,10",
+                "--weights", "/nonexistent/weights.json",
+                "--output-dir", str(tmp_path / "output"),
+            ],
+        )
+        assert result.exit_code != 0
+
+    def test_cli_mode_light_option(
+        self, runner, embeddings_file, config_file, tmp_path
+    ):
+        """T055: --mode light is accepted."""
+        result = runner.invoke(
+            labricate,
+            [
+                "experiment",
+                "--embeddings", str(embeddings_file),
+                "--config", str(config_file),
+                "--param", "hdbscan.min_cluster_size",
+                "--values", "5,10",
+                "--mode", "light",
+                "--output-dir", str(tmp_path / "output"),
+                "--quiet",
+            ],
+        )
+        # Should either succeed or fail gracefully (not crash)
+        assert result.exit_code in [0, 4]
+
+    def test_cli_mode_heavy_option(
+        self, runner, embeddings_file, config_file, tmp_path
+    ):
+        """--mode heavy is accepted (default)."""
+        result = runner.invoke(
+            labricate,
+            [
+                "experiment",
+                "--embeddings", str(embeddings_file),
+                "--config", str(config_file),
+                "--param", "hdbscan.min_cluster_size",
+                "--values", "5,10",
+                "--mode", "heavy",
+                "--output-dir", str(tmp_path / "output"),
+                "--quiet",
+            ],
+        )
+        assert result.exit_code in [0, 4]
+
+    def test_cli_mode_invalid_value_error(
+        self, runner, embeddings_file, config_file
+    ):
+        """--mode with invalid value shows error."""
+        result = runner.invoke(
+            labricate,
+            [
+                "experiment",
+                "--embeddings", str(embeddings_file),
+                "--config", str(config_file),
+                "--param", "hdbscan.min_cluster_size",
+                "--values", "5,10",
+                "--mode", "invalid",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "invalid" in result.output.lower()
+
+    def test_cli_mode_shorthand(
+        self, runner, embeddings_file, config_file, tmp_path
+    ):
+        """-m shorthand works for --mode."""
+        result = runner.invoke(
+            labricate,
+            [
+                "experiment",
+                "--embeddings", str(embeddings_file),
+                "--config", str(config_file),
+                "--param", "hdbscan.min_cluster_size",
+                "--values", "5,10",
+                "-m", "light",
+                "--output-dir", str(tmp_path / "output"),
+                "--quiet",
+            ],
+        )
+        assert result.exit_code in [0, 4]

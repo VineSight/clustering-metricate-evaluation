@@ -208,6 +208,7 @@ class Experiment:
         output_dir: str = "./experiments",             # Output directory
         output_format: Literal["json", "csv", "both"] = "json",
         pipeline: Callable | None = None,              # Custom pipeline (default: BERTopicPipeline)
+        weights: str | dict | None = None,             # Weights for compound scoring
     ) -> None
 ```
 
@@ -221,6 +222,7 @@ class Experiment:
 | `output_dir` | str | Directory for results (default: `./experiments`) |
 | `output_format` | str | `"json"`, `"csv"`, or `"both"` |
 | `pipeline` | Callable or None | Custom pipeline function (default: BERTopicPipeline) |
+| `weights` | str, dict, or None | Path to weights JSON or weights dict for compound scoring |
 
 **Example:**
 
@@ -261,6 +263,8 @@ def run(
     resume: bool = False,                              # Resume from checkpoint
     force: bool = False,                               # Force fresh start
     verbose: bool = True,                              # Print progress
+    mode: Literal["light", "heavy"] = "heavy",         # Computation mode
+    best_metric: str = "Silhouette",                   # Metric for best_run (if no weights)
 ) -> ExperimentResult
 ```
 
@@ -278,6 +282,8 @@ def run(
 | `resume` | bool | Resume from checkpoint if exists |
 | `force` | bool | Force fresh start if config mismatch |
 | `verbose` | bool | Print progress information |
+| `mode` | str | `"light"` (fast, excludes expensive metrics) or `"heavy"` (comprehensive) |
+| `best_metric` | str | Metric used for best_run selection when no weights provided |
 
 **Example:**
 
@@ -865,6 +871,96 @@ df.to_csv("my_results.csv", index=False)
 df.to_excel("my_results.xlsx", index=False)
 ```
 
+### Example 13: Weighted Evaluation with Compound Scores
+
+Use pre-trained weights to compute compound scores and automatically identify the best run:
+
+```python
+from metricate.labricate import Experiment
+
+# Option 1: Provide weights file path
+exp = Experiment(
+    embeddings=embeddings,
+    config=config,
+    weights="path/to/learned_weights.json"
+)
+
+# Option 2: Provide weights as dict
+exp = Experiment(
+    embeddings=embeddings,
+    config=config,
+    weights={
+        "coefficients": {
+            "Silhouette_norm": 0.3,
+            "Davies-Bouldin_norm": -0.2,
+            "Calinski-Harabasz_norm": 0.2,
+        },
+        "bias": 0.3
+    }
+)
+
+result = exp.run(
+    param="hdbscan.min_cluster_size",
+    values=[5, 10, 15, 20, 30]
+)
+
+# Each run now has compound_score
+df = result.to_dataframe()
+print(df[["hdbscan.min_cluster_size", "compound_score", "is_best_run"]])
+
+# Best run is automatically determined by compound_score
+print(f"Best run: {result.best_run}")
+print(f"Score: {result.best_run.score:.4f} ({result.best_run.score_type})")
+print(f"Config: {result.best_run.param_values}")
+```
+
+### Example 14: Light Mode for Fast Experimentation
+
+Use light mode to skip expensive O(n²) metrics during initial exploration:
+
+```python
+# Light mode excludes: Gamma, G-plus, Tau, Point-Biserial, McClain-Rao, NIVA
+result = exp.run(
+    param="hdbscan.min_cluster_size",
+    values=[5, 10, 15, 20, 30, 50],
+    mode="light"  # ~30% faster on large datasets
+)
+
+# For final evaluation, use heavy mode (default)
+result = exp.run(
+    param="hdbscan.min_cluster_size",
+    values=[best_values],
+    mode="heavy"  # Includes all 34 metrics
+)
+```
+
+### Example 15: Override Light Mode for Specific Metrics
+
+Force computation of specific metrics even in light mode:
+
+```python
+result = exp.run(
+    param="hdbscan.min_cluster_size",
+    values=[5, 10, 15, 20],
+    mode="light",
+    include_metrics=["Silhouette", "Gamma"]  # Gamma computed despite light mode
+)
+```
+
+### Example 16: Best Run Without Weights
+
+Use best_metric parameter to select best run by a specific metric:
+
+```python
+result = exp.run(
+    param="hdbscan.min_cluster_size",
+    values=[5, 10, 15, 20, 30],
+    best_metric="Davies-Bouldin"  # Uses this for best_run selection
+)
+
+print(f"Best by Davies-Bouldin: {result.best_run.param_values}")
+```
+
 ---
 
 ## CLI Reference
@@ -891,6 +987,8 @@ metricate labricate experiment [OPTIONS]
 | `--workers INT` | Number of parallel workers |
 | `--include-metrics TEXT` | Comma-separated metrics to include |
 | `--exclude-metrics TEXT` | Comma-separated metrics to exclude |
+| `--weights PATH` | Path to weights JSON for compound scoring |
+| `--mode, -m TEXT` | Computation mode: "light" or "heavy" (default: heavy) |
 | `--verbose / --no-verbose` | Print progress |
 
 **Examples:**

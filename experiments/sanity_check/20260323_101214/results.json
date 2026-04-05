@@ -1,0 +1,1373 @@
+{
+  "experiment_id": "sanity_check_20260323_101133",
+  "experiment_name": "sanity_check",
+  "config": {
+    "base_config": {
+      "random_seed": 42,
+      "umap": {
+        "n_neighbors": 15,
+        "n_components": 5,
+        "min_dist": 0.0,
+        "metric": "cosine",
+        "repulsion_strength": 1.0,
+        "low_memory": false
+      },
+      "clustering_algorithm": "hdbscan",
+      "hdbscan": {
+        "min_cluster_size": 10,
+        "min_samples": 10,
+        "cluster_selection_method": "eom",
+        "metric": "euclidean"
+      },
+      "kmeans": {
+        "n_clusters": 10
+      },
+      "enable_topic_representation": false,
+      "calculate_probabilities": false
+    },
+    "param": "hdbscan.min_cluster_size",
+    "values": [
+      5,
+      10,
+      15,
+      20
+    ],
+    "output_format": "json",
+    "n_workers": 1,
+    "error_handling": "continue"
+  },
+  "runs": [
+    {
+      "run_id": 1,
+      "param_values": {
+        "hdbscan.min_cluster_size": 5
+      },
+      "pipeline_result": {
+        "run_id": 1,
+        "config": {
+          "random_seed": 42,
+          "umap": {
+            "n_neighbors": 15,
+            "n_components": 5,
+            "min_dist": 0.0,
+            "metric": "cosine",
+            "repulsion_strength": 1.0,
+            "low_memory": false
+          },
+          "clustering_algorithm": "hdbscan",
+          "hdbscan": {
+            "min_cluster_size": 5,
+            "min_samples": 10,
+            "cluster_selection_method": "eom",
+            "metric": "euclidean"
+          },
+          "kmeans": {
+            "n_clusters": 10
+          },
+          "enable_topic_representation": false,
+          "calculate_probabilities": false
+        },
+        "n_clusters": 208,
+        "n_noise": 3726,
+        "timing": {
+          "bertopic_seconds": 11.265938541997457,
+          "evaluation_seconds": 4.090298958995845,
+          "total_seconds": 15.356237500993302
+        },
+        "status": "completed",
+        "error": null
+      },
+      "metrics": [
+        {
+          "name": "Silhouette",
+          "value": 0.6343759915197285,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Davies-Bouldin",
+          "value": 0.41674621488956576,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Calinski-Harabasz",
+          "value": 12192.632076188085,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Dunn Index",
+          "value": 0.007599716602598749,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "SSE",
+          "value": 227.21877172910388,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "NCI",
+          "value": -0.2600054345258893,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Ball-Hall",
+          "value": 0.015485070966933797,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Ratkowsky-Lance",
+          "value": 0.06924670402233803,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Ray-Turi",
+          "value": 2.471261463996708,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "RMSSTD",
+          "value": 0.08430450559189376,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "R-squared",
+          "value": 0.9974729957941627,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Wemmert-Gancarski",
+          "value": 0.7347434777779234,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "CS index",
+          "value": 11.571016308470831,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "COP",
+          "value": 0.31768247391356924,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "S_Dbw",
+          "value": 0.02985271061293902,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Det Ratio",
+          "value": 7857089030450.259,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Gamma",
+          "value": 0.994134086335245,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Generalized Dunn",
+          "value": 0.06900228846434388,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "G-plus",
+          "value": 7.454865875400305e-05,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "I-index (PBM)",
+          "value": 2.5181542972811077,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Log_Det_Ratio",
+          "value": 196029.47106392382,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "McClain-Rao",
+          "value": 0.07383166831592665,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Point-Biserial",
+          "value": 0.2217122151591364,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "SD validity",
+          "value": 1564456.9645248088,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Tau",
+          "value": 2442037.31497077,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Trace_WiB",
+          "value": 2142.504305398935,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Ksq_DetW",
+          "value": 4392719745302.3574,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Banfield-Raftery",
+          "value": -27675.018533778297,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Negentropy",
+          "value": -10.960217194460547,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "NIVA",
+          "value": 0.0804219531273128,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Score Function",
+          "value": 0.999999999958074,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Scott-Symons",
+          "value": -238255.1359445092,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        }
+      ]
+    },
+    {
+      "run_id": 2,
+      "param_values": {
+        "hdbscan.min_cluster_size": 10
+      },
+      "pipeline_result": {
+        "run_id": 2,
+        "config": {
+          "random_seed": 42,
+          "umap": {
+            "n_neighbors": 15,
+            "n_components": 5,
+            "min_dist": 0.0,
+            "metric": "cosine",
+            "repulsion_strength": 1.0,
+            "low_memory": false
+          },
+          "clustering_algorithm": "hdbscan",
+          "hdbscan": {
+            "min_cluster_size": 10,
+            "min_samples": 10,
+            "cluster_selection_method": "eom",
+            "metric": "euclidean"
+          },
+          "kmeans": {
+            "n_clusters": 10
+          },
+          "enable_topic_representation": false,
+          "calculate_probabilities": false
+        },
+        "n_clusters": 191,
+        "n_noise": 3690,
+        "timing": {
+          "bertopic_seconds": 5.28453387497575,
+          "evaluation_seconds": 3.5563029579934664,
+          "total_seconds": 8.840836832969217
+        },
+        "status": "completed",
+        "error": null
+      },
+      "metrics": [
+        {
+          "name": "Silhouette",
+          "value": 0.6268236891209229,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Davies-Bouldin",
+          "value": 0.4280610510712586,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Calinski-Harabasz",
+          "value": 12134.207444602778,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Dunn Index",
+          "value": 0.007599716602598749,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "SSE",
+          "value": 250.6783594777664,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "NCI",
+          "value": -0.31246224534312494,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Ball-Hall",
+          "value": 0.017626705488160758,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Ratkowsky-Lance",
+          "value": 0.07225183733182701,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Ray-Turi",
+          "value": 2.7116248480300293,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "RMSSTD",
+          "value": 0.08818497267242023,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "R-squared",
+          "value": 0.9972114405595041,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Wemmert-Gancarski",
+          "value": 0.7279351014223053,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "CS index",
+          "value": 8.710856940947973,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "COP",
+          "value": 0.3176039094268964,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "S_Dbw",
+          "value": 0.031655142960781986,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Det Ratio",
+          "value": 4792390530461.296,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Gamma",
+          "value": 0.9941877277275677,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Generalized Dunn",
+          "value": 0.06900228846434388,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "G-plus",
+          "value": 7.523365055222433e-05,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "I-index (PBM)",
+          "value": 2.653324278209632,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Log_Det_Ratio",
+          "value": 193816.65901827387,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "McClain-Rao",
+          "value": 0.07477623134243257,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Point-Biserial",
+          "value": 0.223146739503643,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "SD validity",
+          "value": 1279984.3981328171,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Tau",
+          "value": 2491612.785060345,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Trace_WiB",
+          "value": 1946.1395747686815,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Ksq_DetW",
+          "value": 6076249911114.855,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Banfield-Raftery",
+          "value": -27205.100442038496,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Negentropy",
+          "value": -10.742731093377918,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "NIVA",
+          "value": 0.0729648468650372,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Score Function",
+          "value": 0.999999999994378,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Scott-Symons",
+          "value": -236809.6378298115,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        }
+      ]
+    },
+    {
+      "run_id": 3,
+      "param_values": {
+        "hdbscan.min_cluster_size": 15
+      },
+      "pipeline_result": {
+        "run_id": 3,
+        "config": {
+          "random_seed": 42,
+          "umap": {
+            "n_neighbors": 15,
+            "n_components": 5,
+            "min_dist": 0.0,
+            "metric": "cosine",
+            "repulsion_strength": 1.0,
+            "low_memory": false
+          },
+          "clustering_algorithm": "hdbscan",
+          "hdbscan": {
+            "min_cluster_size": 15,
+            "min_samples": 10,
+            "cluster_selection_method": "eom",
+            "metric": "euclidean"
+          },
+          "kmeans": {
+            "n_clusters": 10
+          },
+          "enable_topic_representation": false,
+          "calculate_probabilities": false
+        },
+        "n_clusters": 147,
+        "n_noise": 3740,
+        "timing": {
+          "bertopic_seconds": 5.419882000016514,
+          "evaluation_seconds": 3.181982042005984,
+          "total_seconds": 8.601864042022498
+        },
+        "status": "completed",
+        "error": null
+      },
+      "metrics": [
+        {
+          "name": "Silhouette",
+          "value": 0.6236273905884946,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Davies-Bouldin",
+          "value": 0.45750904383811203,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Calinski-Harabasz",
+          "value": 13943.323491746383,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Dunn Index",
+          "value": 0.007599716602598749,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "SSE",
+          "value": 293.73641293880684,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "NCI",
+          "value": -0.24378642676153883,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Ball-Hall",
+          "value": 0.024880840925819697,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Ratkowsky-Lance",
+          "value": 0.08234037516042256,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Ray-Turi",
+          "value": 1.776271802442972,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "RMSSTD",
+          "value": 0.0955030500595755,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "R-squared",
+          "value": 0.9968459962239958,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Wemmert-Gancarski",
+          "value": 0.7220110837001007,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "CS index",
+          "value": 4.040390187002769,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "COP",
+          "value": 0.3208072112438932,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "S_Dbw",
+          "value": 0.03752321751145682,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Det Ratio",
+          "value": 2253169801890.7866,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Gamma",
+          "value": 0.9949447376695908,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Generalized Dunn",
+          "value": 0.09263729951874215,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "G-plus",
+          "value": 7.41809951641922e-05,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "I-index (PBM)",
+          "value": 3.635759423486469,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Log_Det_Ratio",
+          "value": 187384.85002457333,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "McClain-Rao",
+          "value": 0.07271863527452206,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Point-Biserial",
+          "value": 0.2391210513638646,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "SD validity",
+          "value": 561983.196272943,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Tau",
+          "value": 2615078.2381454646,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Trace_WiB",
+          "value": 1630.7229807669082,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Ksq_DetW",
+          "value": 9318962479797.422,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Banfield-Raftery",
+          "value": -24851.833948510623,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Negentropy",
+          "value": -9.903795913302313,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "NIVA",
+          "value": 0.0610926459886681,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Score Function",
+          "value": 0.9999999999787158,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Scott-Symons",
+          "value": -223972.08552119535,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        }
+      ]
+    },
+    {
+      "run_id": 4,
+      "param_values": {
+        "hdbscan.min_cluster_size": 20
+      },
+      "pipeline_result": {
+        "run_id": 4,
+        "config": {
+          "random_seed": 42,
+          "umap": {
+            "n_neighbors": 15,
+            "n_components": 5,
+            "min_dist": 0.0,
+            "metric": "cosine",
+            "repulsion_strength": 1.0,
+            "low_memory": false
+          },
+          "clustering_algorithm": "hdbscan",
+          "hdbscan": {
+            "min_cluster_size": 20,
+            "min_samples": 10,
+            "cluster_selection_method": "eom",
+            "metric": "euclidean"
+          },
+          "kmeans": {
+            "n_clusters": 10
+          },
+          "enable_topic_representation": false,
+          "calculate_probabilities": false
+        },
+        "n_clusters": 104,
+        "n_noise": 3652,
+        "timing": {
+          "bertopic_seconds": 5.323115292005241,
+          "evaluation_seconds": 3.165682167018531,
+          "total_seconds": 8.488797459023772
+        },
+        "status": "completed",
+        "error": null
+      },
+      "metrics": [
+        {
+          "name": "Silhouette",
+          "value": 0.6213501057833755,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Davies-Bouldin",
+          "value": 0.4972081521263996,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Calinski-Harabasz",
+          "value": 12979.773831180779,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Dunn Index",
+          "value": 0.020007456794710485,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "SSE",
+          "value": 452.19698514043154,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "NCI",
+          "value": -0.28482757482064824,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Ball-Hall",
+          "value": 0.04101430777855779,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Ratkowsky-Lance",
+          "value": 0.09777865340670364,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Ray-Turi",
+          "value": 0.6080227922119322,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "RMSSTD",
+          "value": 0.11730865399666202,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "R-squared",
+          "value": 0.9951082580914589,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Wemmert-Gancarski",
+          "value": 0.7157460654173603,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "CS index",
+          "value": 1.0947253609481964,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "COP",
+          "value": 0.32304983058770026,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "S_Dbw",
+          "value": 0.05046094966160842,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Det Ratio",
+          "value": 185157960183.34518,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Gamma",
+          "value": 0.9943730756466654,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Generalized Dunn",
+          "value": 0.19515704630934153,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "G-plus",
+          "value": 0.00010329482640321949,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "I-index (PBM)",
+          "value": 4.393530277039723,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Log_Det_Ratio",
+          "value": 173205.31601154516,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "McClain-Rao",
+          "value": 0.08333104836508905,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Point-Biserial",
+          "value": 0.26718379561051353,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "SD validity",
+          "value": 131306.80011526027,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Tau",
+          "value": 3001861.81107822,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Trace_WiB",
+          "value": 1023.5180273552733,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Ksq_DetW",
+          "value": 41919327352353.02,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Banfield-Raftery",
+          "value": -21476.687757286785,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Negentropy",
+          "value": -8.424440900652336,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "NIVA",
+          "value": 0.057681338712057065,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        },
+        {
+          "name": "Score Function",
+          "value": 0.9999999999504898,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "higher"
+        },
+        {
+          "name": "Scott-Symons",
+          "value": -207211.47138225395,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "direction": "lower"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total_runs": 4,
+    "completed_runs": 4,
+    "failed_runs": 0,
+    "skipped_runs": 0,
+    "total_duration_seconds": 41.315173
+  },
+  "output_path": null
+}

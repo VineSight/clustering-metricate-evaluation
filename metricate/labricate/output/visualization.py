@@ -46,15 +46,16 @@ def plot_metric_vs_param(
     if not completed_runs:
         raise ValueError("No completed runs to plot")
 
-    # Check that metric exists
-    metric_found = False
-    for run in completed_runs:
-        for m in run.metrics:
-            if m.name == metric:
-                metric_found = True
+    # Check that metric exists (compound_score is a special case)
+    metric_found = metric == "compound_score"
+    if not metric_found:
+        for run in completed_runs:
+            for m in run.metrics:
+                if m.name == metric:
+                    metric_found = True
+                    break
+            if metric_found:
                 break
-        if metric_found:
-            break
 
     if not metric_found:
         raise ValueError(f"Metric '{metric}' not found in experiment results")
@@ -68,12 +69,15 @@ def plot_metric_vs_param(
         if param_value is None:
             continue
 
-        # Get metric value
+        # Get metric value - check compound_score as special case
         metric_value = None
-        for m in run.metrics:
-            if m.name == metric:
-                metric_value = m.value
-                break
+        if metric == "compound_score" and run.compound_score is not None:
+            metric_value = run.compound_score
+        else:
+            for m in run.metrics:
+                if m.name == metric:
+                    metric_value = m.value
+                    break
 
         if metric_value is not None:
             x_values.append(param_value)
@@ -163,11 +167,14 @@ def plot_heatmap(
         x_values_set.add(x_val)
         y_values_set.add(y_val)
 
-        # Get metric value
-        for m in run.metrics:
-            if m.name == metric:
-                data_points[(x_val, y_val)] = m.value
-                break
+        # Get metric value - check compound_score as special case
+        if metric == "compound_score" and run.compound_score is not None:
+            data_points[(x_val, y_val)] = run.compound_score
+        else:
+            for m in run.metrics:
+                if m.name == metric:
+                    data_points[(x_val, y_val)] = m.value
+                    break
 
     if len(x_values_set) < 2 or len(y_values_set) < 2:
         raise ValueError(

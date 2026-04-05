@@ -29,17 +29,39 @@ from metricate.labricate.core.config import (
     validate_config,
 )
 from metricate.labricate.core.loader import load_embeddings
+from metricate.labricate.core.modes import (
+    ComputationMode,
+    apply_mode_exclusions,
+    get_expensive_metrics,
+)
+from metricate.labricate.core.scoring import (
+    BestRunInfo,
+    WeightCoverageWarning,
+    check_weight_coverage,
+    compute_run_scores,
+    find_best_run,
+)
 from metricate.labricate.pipelines.bertopic import BERTopicPipeline
 
 __all__ = [
     # Core classes
-    "Experiment",
     "BERTopicPipeline",
+    "Experiment",
     # Result types
+    "BestRunInfo",
     "ExperimentResult",
     "ExperimentSummary",
     "PipelineResult",
     "RunResult",
+    # Modes
+    "ComputationMode",
+    "apply_mode_exclusions",
+    "get_expensive_metrics",
+    # Scoring
+    "WeightCoverageWarning",
+    "check_weight_coverage",
+    "compute_run_scores",
+    "find_best_run",
     # Config helpers
     "load_config",
     "validate_config",
