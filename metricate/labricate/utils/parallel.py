@@ -1,11 +1,12 @@
 """Parallel execution utilities for Labricate.
 
-Provides a ThreadPoolExecutor wrapper for running experiment
-runs in parallel with proper error handling and worker count capping.
+Provides a joblib-based wrapper for running experiment runs in parallel
+with proper error handling and worker count capping.
 
-Note: ThreadPoolExecutor is used instead of ProcessPoolExecutor because
-experiment pipelines involve complex objects (BERTopic models, numpy arrays)
-that are easier to share via threads than to pickle across processes.
+Note: joblib's default "loky" backend spawns separate processes, giving
+each worker its own Numba runtime.  This avoids the crash that occurs
+when Numba's workqueue threading layer is accessed concurrently from
+multiple Python threads.
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Literal, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,10 @@ def cap_worker_count(requested: int) -> int:
 
 
 class ParallelExecutor:
-    """Wrapper around ProcessPoolExecutor with error handling.
+    """Joblib-based parallel executor with error handling.
+
+    Uses joblib's "loky" backend (process-based) so that each worker
+    has its own Numba runtime, avoiding workqueue threading conflicts.
 
     Example:
         >>> executor = ParallelExecutor(n_workers=4)
@@ -69,7 +72,6 @@ class ParallelExecutor:
         """
         self.n_workers = cap_worker_count(n_workers)
         self.error_handling = error_handling
-        self._executor: ThreadPoolExecutor | None = None
 
     def __enter__(self) -> ParallelExecutor:
         """Enter context manager."""
@@ -77,24 +79,21 @@ class ParallelExecutor:
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Exit context manager."""
-        self.shutdown()
-
-    def shutdown(self) -> None:
-        """Shutdown the executor if active."""
-        if self._executor is not None:
-            self._executor.shutdown(wait=True)
-            self._executor = None
 
     def map(
         self,
         func: Callable[[T], R],
         items: list[T],
+        on_complete: Callable[[], None] | None = None,
     ) -> list[R | Exception]:
         """Execute function on items in parallel.
 
         Args:
             func: Function to apply to each item.
             items: List of items to process.
+            on_complete: Optional callback invoked in the main process each
+                time a single item finishes.  Use this to update a progress
+                bar without sharing it with worker processes.
 
         Returns:
             List of results in same order as input.
@@ -105,14 +104,15 @@ class ParallelExecutor:
         """
         if self.n_workers == 1:
             # Sequential execution
-            return self._map_sequential(func, items)
+            return self._map_sequential(func, items, on_complete=on_complete)
 
-        return self._map_parallel(func, items)
+        return self._map_parallel(func, items, on_complete=on_complete)
 
     def _map_sequential(
         self,
         func: Callable[[T], R],
         items: list[T],
+        on_complete: Callable[[], None] | None = None,
     ) -> list[R | Exception]:
         """Execute sequentially (n_workers=1)."""
         results: list[R | Exception] = []
@@ -123,34 +123,50 @@ class ParallelExecutor:
                 if self.error_handling == "fail_fast":
                     raise
                 results.append(e)
+            if on_complete:
+                on_complete()
         return results
 
     def _map_parallel(
         self,
         func: Callable[[T], R],
         items: list[T],
+        on_complete: Callable[[], None] | None = None,
     ) -> list[R | Exception]:
-        """Execute in parallel using ThreadPoolExecutor."""
+        """Execute in parallel using joblib (loky process-based backend).
+
+        Each worker process has its own Numba runtime, so there is no
+        workqueue threading conflict even when pipelines use UMAP or
+        other Numba-parallel code.
+
+        Results are collected in completion order for live on_complete
+        callbacks, then reordered to match input order before returning.
+        """
+        from joblib import Parallel, delayed
+
+        # Each task returns (original_index, result) so we can reorder later
+        def _indexed(idx: int, item: T) -> tuple[int, R]:
+            return idx, func(item)
+
+        def _indexed_safe(idx: int, item: T) -> tuple[int, R | Exception]:
+            try:
+                return idx, func(item)
+            except Exception as e:
+                return idx, e
+
+        worker = _indexed if self.error_handling == "fail_fast" else _indexed_safe
+
         results: list[R | Exception | None] = [None] * len(items)
 
-        with ThreadPoolExecutor(max_workers=self.n_workers) as executor:
-            # Submit all tasks with their indices
-            future_to_idx = {
-                executor.submit(func, item): idx for idx, item in enumerate(items)
-            }
+        # return_as="generator_unordered" yields each result as it finishes
+        gen = Parallel(n_jobs=self.n_workers, return_as="generator_unordered")(
+            delayed(worker)(idx, item) for idx, item in enumerate(items)
+        )
 
-            # Collect results as they complete
-            for future in as_completed(future_to_idx):
-                idx = future_to_idx[future]
-                try:
-                    results[idx] = future.result()
-                except Exception as e:
-                    if self.error_handling == "fail_fast":
-                        # Cancel remaining futures
-                        for f in future_to_idx:
-                            f.cancel()
-                        raise
-                    results[idx] = e
+        for idx, result in gen:
+            results[idx] = result
+            if on_complete:
+                on_complete()
 
         return results  # type: ignore
 
