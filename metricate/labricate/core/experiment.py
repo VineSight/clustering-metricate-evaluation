@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 import pandas as pd
 
+from metricate.core.evaluator import calculate_all_metrics, filter_noise_points
 from metricate.labricate.core.config import (
     load_config,
     resolve_path,
@@ -384,6 +385,7 @@ class Experiment:
         force: bool = False,
         verbose: bool = True,
         mode: ComputationMode = "heavy",
+        save_csv: bool = False,
         best_metric: str = "Silhouette",
     ) -> ExperimentResult:
         """Run a single-parameter experiment.
@@ -401,6 +403,10 @@ class Experiment:
             verbose: Whether to print progress.
             mode: Computation mode - "light" excludes expensive O(n²) metrics,
                 "heavy" computes all metrics. Default is "heavy".
+            save_csv: If True, serialize embeddings to a temporary CSV file and
+                evaluate via the metricate.evaluate() CSV path (legacy behaviour).
+                If False (default), evaluate directly from numpy arrays, skipping
+                the CSV round-trip for a significant performance improvement.
             best_metric: Metric to use for best_run when weights not provided.
                 Default is "Silhouette".
 
@@ -478,36 +484,48 @@ class Experiment:
 
             # Evaluate with Metricate
             with timer() as eval_timer:
-                import tempfile
+                if save_csv:
+                    import tempfile
 
-                # Create DataFrame for Metricate
-                eval_df = pd.DataFrame(
-                    {
-                        "cluster_id": labels,
-                        **{
-                            f"dim_{i}": reduced_embeddings[:, i]
-                            for i in range(reduced_embeddings.shape[1])
-                        },
-                    }
-                )
-
-                # Save to temp file for metricate (it expects CSV path)
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".csv", delete=False
-                ) as tmp:
-                    eval_df.to_csv(tmp.name, index=False)
-                    tmp_path = tmp.name
-
-                try:
-                    # Run evaluation with mode-adjusted exclusions
-                    eval_result = evaluate(
-                        tmp_path,
-                        label_col="cluster_id",
-                        exclude=final_exclude_metrics if final_exclude_metrics else None,
+                    # Create DataFrame for Metricate
+                    eval_df = pd.DataFrame(
+                        {
+                            "cluster_id": labels,
+                            **{
+                                f"dim_{i}": reduced_embeddings[:, i]
+                                for i in range(reduced_embeddings.shape[1])
+                            },
+                        }
                     )
-                finally:
-                    # Clean up temp file
-                    Path(tmp_path).unlink(missing_ok=True)
+
+                    # Save to temp file for metricate (it expects CSV path)
+                    with tempfile.NamedTemporaryFile(
+                        mode="w", suffix=".csv", delete=False
+                    ) as tmp:
+                        eval_df.to_csv(tmp.name, index=False)
+                        tmp_path = tmp.name
+
+                    try:
+                        # Run evaluation with mode-adjusted exclusions
+                        eval_result = evaluate(
+                            tmp_path,
+                            label_col="cluster_id",
+                            exclude=final_exclude_metrics if final_exclude_metrics else None,
+                        )
+                    finally:
+                        # Clean up temp file
+                        Path(tmp_path).unlink(missing_ok=True)
+                else:
+                    # Direct array evaluation (avoids CSV round-trip overhead)
+                    filtered_X, filtered_labels, _ = filter_noise_points(
+                        reduced_embeddings, labels
+                    )
+                    eval_result = calculate_all_metrics(
+                        filtered_X,
+                        filtered_labels,
+                        exclude=final_exclude_metrics if final_exclude_metrics else None,
+                        skip_precompute=(mode == "light"),
+                    )
 
             # Create timing info
             timing = TimingInfo(
@@ -625,6 +643,7 @@ class Experiment:
                 "output_format": self.output_format,
                 "n_workers": n_workers,
                 "error_handling": error_handling,
+                "save_csv": save_csv,
             },
             runs=runs,
             summary=summary,
@@ -668,6 +687,7 @@ class Experiment:
         force: bool = False,
         verbose: bool = True,
         mode: ComputationMode = "heavy",
+        save_csv: bool = False,
         best_metric: str = "Silhouette",
     ) -> ExperimentResult:
         """Run a grid search over multiple parameters.
@@ -685,6 +705,10 @@ class Experiment:
             verbose: Whether to print progress.
             mode: Computation mode - "light" excludes expensive O(n²) metrics,
                 "heavy" computes all metrics. Default is "heavy".
+            save_csv: If True, serialize embeddings to a temporary CSV file and
+                evaluate via the metricate.evaluate() CSV path (legacy behaviour).
+                If False (default), evaluate directly from numpy arrays, skipping
+                the CSV round-trip for a significant performance improvement.
             best_metric: Metric to use for best_run when weights not provided.
                 Default is "Silhouette".
 
@@ -780,36 +804,48 @@ class Experiment:
 
             # Evaluate with Metricate
             with timer() as eval_timer:
-                import tempfile
+                if save_csv:
+                    import tempfile
 
-                # Create DataFrame for Metricate
-                eval_df = pd.DataFrame(
-                    {
-                        "cluster_id": labels,
-                        **{
-                            f"dim_{i}": reduced_embeddings[:, i]
-                            for i in range(reduced_embeddings.shape[1])
-                        },
-                    }
-                )
-
-                # Save to temp file for metricate (it expects CSV path)
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".csv", delete=False
-                ) as tmp:
-                    eval_df.to_csv(tmp.name, index=False)
-                    tmp_path = tmp.name
-
-                try:
-                    # Run evaluation with mode-adjusted exclusions
-                    eval_result = evaluate(
-                        tmp_path,
-                        label_col="cluster_id",
-                        exclude=final_exclude_metrics if final_exclude_metrics else None,
+                    # Create DataFrame for Metricate
+                    eval_df = pd.DataFrame(
+                        {
+                            "cluster_id": labels,
+                            **{
+                                f"dim_{i}": reduced_embeddings[:, i]
+                                for i in range(reduced_embeddings.shape[1])
+                            },
+                        }
                     )
-                finally:
-                    # Clean up temp file
-                    Path(tmp_path).unlink(missing_ok=True)
+
+                    # Save to temp file for metricate (it expects CSV path)
+                    with tempfile.NamedTemporaryFile(
+                        mode="w", suffix=".csv", delete=False
+                    ) as tmp:
+                        eval_df.to_csv(tmp.name, index=False)
+                        tmp_path = tmp.name
+
+                    try:
+                        # Run evaluation with mode-adjusted exclusions
+                        eval_result = evaluate(
+                            tmp_path,
+                            label_col="cluster_id",
+                            exclude=final_exclude_metrics if final_exclude_metrics else None,
+                        )
+                    finally:
+                        # Clean up temp file
+                        Path(tmp_path).unlink(missing_ok=True)
+                else:
+                    # Direct array evaluation (avoids CSV round-trip overhead)
+                    filtered_X, filtered_labels, _ = filter_noise_points(
+                        reduced_embeddings, labels
+                    )
+                    eval_result = calculate_all_metrics(
+                        filtered_X,
+                        filtered_labels,
+                        exclude=final_exclude_metrics if final_exclude_metrics else None,
+                        skip_precompute=(mode == "light"),
+                    )
 
             # Create timing info
             timing = TimingInfo(
@@ -928,6 +964,7 @@ class Experiment:
                 "output_format": self.output_format,
                 "n_workers": n_workers,
                 "error_handling": error_handling,
+                "save_csv": save_csv,
             },
             runs=runs,
             summary=summary,
