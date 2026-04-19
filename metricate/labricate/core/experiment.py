@@ -23,6 +23,14 @@ from metricate.labricate.core.config import (
     validate_param_paths,
 )
 from metricate.labricate.core.loader import load_embeddings
+from metricate.labricate.core.modes import ComputationMode, apply_mode_exclusions
+from metricate.labricate.core.scoring import (
+    BestRunInfo,
+    WeightCoverageWarning,
+    check_weight_coverage,
+    compute_run_scores,
+    find_best_run,
+)
 from metricate.labricate.pipelines.base import validate_pipeline_output
 from metricate.labricate.utils.logging import (
     TimingInfo,
@@ -32,14 +40,7 @@ from metricate.labricate.utils.logging import (
     setup_progress,
     timer,
 )
-from metricate.labricate.core.modes import ComputationMode, apply_mode_exclusions
-from metricate.labricate.core.scoring import (
-    BestRunInfo,
-    WeightCoverageWarning,
-    check_weight_coverage,
-    compute_run_scores,
-    find_best_run,
-)
+from metricate.labricate.utils.parallel import ParallelExecutor
 from metricate.training.weights import MetricWeights
 
 if TYPE_CHECKING:
@@ -448,116 +449,130 @@ class Experiment:
         # Progress bar
         pbar = setup_progress(total_runs, desc=f"Running {self.name}", disable=not verbose)
 
-        for run_id, value in enumerate(values, start=1):
+        def _execute(run_id_and_value: tuple[int, Any]) -> RunResult:
+            run_id, value = run_id_and_value
+
             # Log start
             log_run_start(run_id, total_runs, param, value, verbose)
 
             # Create run config
             run_config = set_param(self.config, param, value)
 
-            try:
-                # Run pipeline with timing
-                with timer() as pipeline_timer:
-                    labels, reduced_embeddings = self.pipeline(self.embeddings, run_config)
+            # Run pipeline with timing
+            with timer() as pipeline_timer:
+                labels, reduced_embeddings = self.pipeline(self.embeddings, run_config)
 
-                # Validate pipeline output (T045: output shape validation)
-                validation_errors = validate_pipeline_output(
-                    labels, reduced_embeddings, self.n_samples
+            # Validate pipeline output (T045: output shape validation)
+            validation_errors = validate_pipeline_output(
+                labels, reduced_embeddings, self.n_samples
+            )
+            if validation_errors:
+                raise ValueError(
+                    f"Invalid pipeline output: {'; '.join(validation_errors)}"
                 )
-                if validation_errors:
-                    raise ValueError(
-                        f"Invalid pipeline output: {'; '.join(validation_errors)}"
+
+            # Count clusters and noise
+            unique_labels = np.unique(labels)
+            n_clusters = len([lbl for lbl in unique_labels if lbl >= 0])
+            n_noise = int(np.sum(labels == -1))
+
+            # Evaluate with Metricate
+            with timer() as eval_timer:
+                import tempfile
+
+                # Create DataFrame for Metricate
+                eval_df = pd.DataFrame(
+                    {
+                        "cluster_id": labels,
+                        **{
+                            f"dim_{i}": reduced_embeddings[:, i]
+                            for i in range(reduced_embeddings.shape[1])
+                        },
+                    }
+                )
+
+                # Save to temp file for metricate (it expects CSV path)
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".csv", delete=False
+                ) as tmp:
+                    eval_df.to_csv(tmp.name, index=False)
+                    tmp_path = tmp.name
+
+                try:
+                    # Run evaluation with mode-adjusted exclusions
+                    eval_result = evaluate(
+                        tmp_path,
+                        label_col="cluster_id",
+                        exclude=final_exclude_metrics if final_exclude_metrics else None,
                     )
+                finally:
+                    # Clean up temp file
+                    Path(tmp_path).unlink(missing_ok=True)
 
-                # Count clusters and noise
-                unique_labels = np.unique(labels)
-                n_clusters = len([lbl for lbl in unique_labels if lbl >= 0])
-                n_noise = int(np.sum(labels == -1))
+            # Create timing info
+            timing = TimingInfo(
+                bertopic_seconds=pipeline_timer["elapsed"],
+                evaluation_seconds=eval_timer["elapsed"],
+                total_seconds=pipeline_timer["elapsed"] + eval_timer["elapsed"],
+            )
 
-                # Evaluate with Metricate
-                with timer() as eval_timer:
-                    import tempfile
-                    
-                    # Create DataFrame for Metricate
-                    eval_df = pd.DataFrame(
-                        {
-                            "cluster_id": labels,
-                            **{
-                                f"dim_{i}": reduced_embeddings[:, i]
-                                for i in range(reduced_embeddings.shape[1])
-                            },
-                        }
+            # Create pipeline result
+            pipeline_result = PipelineResult(
+                run_id=run_id,
+                config=run_config,
+                labels=labels,
+                reduced_embeddings=reduced_embeddings,
+                n_clusters=n_clusters,
+                n_noise=n_noise,
+                timing=timing,
+                status="completed",
+            )
+
+            # Extract metrics from Metricate result
+            # EvaluationResult.metrics is a list of MetricValue objects
+            metrics: list[MetricResult] = []
+            for mv in eval_result.computed_metrics():
+                if include_metrics and mv.metric not in include_metrics:
+                    continue
+                metrics.append(
+                    MetricResult(
+                        name=mv.metric,
+                        value=float(mv.value) if mv.value is not None else 0.0,
+                        range=(0.0, 1.0),  # Default, could parse mv.range
+                        direction=mv.direction or "higher",
                     )
-
-                    # Save to temp file for metricate (it expects CSV path)
-                    with tempfile.NamedTemporaryFile(
-                        mode="w", suffix=".csv", delete=False
-                    ) as tmp:
-                        eval_df.to_csv(tmp.name, index=False)
-                        tmp_path = tmp.name
-
-                    try:
-                        # Run evaluation with mode-adjusted exclusions
-                        eval_result = evaluate(
-                            tmp_path,
-                            label_col="cluster_id",
-                            exclude=final_exclude_metrics if final_exclude_metrics else None,
-                        )
-                    finally:
-                        # Clean up temp file
-                        Path(tmp_path).unlink(missing_ok=True)
-
-                # Create timing info
-                timing = TimingInfo(
-                    bertopic_seconds=pipeline_timer["elapsed"],
-                    evaluation_seconds=eval_timer["elapsed"],
-                    total_seconds=pipeline_timer["elapsed"] + eval_timer["elapsed"],
                 )
 
-                # Create pipeline result
-                pipeline_result = PipelineResult(
-                    run_id=run_id,
-                    config=run_config,
-                    labels=labels,
-                    reduced_embeddings=reduced_embeddings,
-                    n_clusters=n_clusters,
-                    n_noise=n_noise,
-                    timing=timing,
-                    status="completed",
-                )
+            # Create run result
+            run_result = RunResult(
+                run_id=run_id,
+                param_values={param: value},
+                pipeline_result=pipeline_result,
+                metrics=metrics,
+            )
 
-                # Extract metrics from Metricate result
-                # EvaluationResult.metrics is a list of MetricValue objects
-                metrics: list[MetricResult] = []
-                for mv in eval_result.computed_metrics():
-                    if include_metrics and mv.metric not in include_metrics:
-                        continue
-                    metrics.append(
-                        MetricResult(
-                            name=mv.metric,
-                            value=float(mv.value) if mv.value is not None else 0.0,
-                            range=(0.0, 1.0),  # Default, could parse mv.range
-                            direction=mv.direction or "higher",
-                        )
-                    )
+            # Log completion
+            log_run_complete(run_id, timing, n_clusters, n_noise, verbose)
+            return run_result
 
-                # Create run result
-                run_result = RunResult(
-                    run_id=run_id,
-                    param_values={param: value},
-                    pipeline_result=pipeline_result,
-                    metrics=metrics,
-                )
-                runs.append(run_result)
-                completed += 1
+        items = list(enumerate(values, start=1))
+        try:
+            with ParallelExecutor(n_workers=n_workers, error_handling=error_handling) as executor:
+                # pbar lives in the main process; on_complete updates it as each run finishes
+                raw_results = executor.map(_execute, items, on_complete=lambda: pbar.update(1))
+        except Exception:
+            pbar.close()
+            raise
 
-                # Log completion
-                log_run_complete(run_id, timing, n_clusters, n_noise, verbose)
+        pbar.close()
 
-            except Exception as e:
+        # Collect results; convert exceptions into failed RunResults
+        for (run_id, value), result in zip(items, raw_results, strict=True):
+            if isinstance(result, Exception):
                 failed += 1
 
                 # Create failed result
+                run_config = set_param(self.config, param, value)
                 pipeline_result = PipelineResult(
                     run_id=run_id,
                     config=run_config,
@@ -567,29 +582,20 @@ class Experiment:
                     n_noise=0,
                     timing=TimingInfo(),
                     status="failed",
-                    error=str(e),
+                    error=str(result),
                 )
-
-                run_result = RunResult(
+                runs.append(RunResult(
                     run_id=run_id,
                     param_values={param: value},
                     pipeline_result=pipeline_result,
                     metrics=[],
-                )
-                runs.append(run_result)
-
-                if error_handling == "fail_fast":
-                    pbar.close()
-                    raise RuntimeError(f"Run {run_id} failed: {e}") from e
-                else:
-                    if verbose:
-                        from tqdm import tqdm
-
-                        tqdm.write(f"  ✗ Run {run_id} failed: {e}")
-
-            pbar.update(1)
-
-        pbar.close()
+                ))
+                if verbose:
+                    from tqdm import tqdm
+                    tqdm.write(f"  ✗ Run {run_id} failed: {result}")
+            else:
+                completed += 1
+                runs.append(result)
 
         # Create summary
         total_duration = (datetime.now() - start_time).total_seconds()
@@ -738,7 +744,9 @@ class Experiment:
         # Progress bar
         pbar = setup_progress(total_runs, desc=f"Grid search {self.name}", disable=not verbose)
 
-        for run_id, combo_values in enumerate(combinations, start=1):
+        def _execute_grid(run_id_and_combo: tuple[int, tuple]) -> RunResult:
+            run_id, combo_values = run_id_and_combo
+
             # Create param_values dict for this combination
             param_values_dict = dict(zip(param_names, combo_values, strict=True))
 
@@ -752,108 +760,123 @@ class Experiment:
             for param, value in param_values_dict.items():
                 run_config = set_param(run_config, param, value)
 
-            try:
-                # Run pipeline with timing
-                with timer() as pipeline_timer:
-                    labels, reduced_embeddings = self.pipeline(self.embeddings, run_config)
+            # Run pipeline with timing
+            with timer() as pipeline_timer:
+                labels, reduced_embeddings = self.pipeline(self.embeddings, run_config)
 
-                # Validate pipeline output
-                validation_errors = validate_pipeline_output(
-                    labels, reduced_embeddings, self.n_samples
+            # Validate pipeline output
+            validation_errors = validate_pipeline_output(
+                labels, reduced_embeddings, self.n_samples
+            )
+            if validation_errors:
+                raise ValueError(
+                    f"Invalid pipeline output: {'; '.join(validation_errors)}"
                 )
-                if validation_errors:
-                    raise ValueError(
-                        f"Invalid pipeline output: {'; '.join(validation_errors)}"
+
+            # Count clusters and noise
+            unique_labels = np.unique(labels)
+            n_clusters = len([lbl for lbl in unique_labels if lbl >= 0])
+            n_noise = int(np.sum(labels == -1))
+
+            # Evaluate with Metricate
+            with timer() as eval_timer:
+                import tempfile
+
+                # Create DataFrame for Metricate
+                eval_df = pd.DataFrame(
+                    {
+                        "cluster_id": labels,
+                        **{
+                            f"dim_{i}": reduced_embeddings[:, i]
+                            for i in range(reduced_embeddings.shape[1])
+                        },
+                    }
+                )
+
+                # Save to temp file for metricate (it expects CSV path)
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".csv", delete=False
+                ) as tmp:
+                    eval_df.to_csv(tmp.name, index=False)
+                    tmp_path = tmp.name
+
+                try:
+                    # Run evaluation with mode-adjusted exclusions
+                    eval_result = evaluate(
+                        tmp_path,
+                        label_col="cluster_id",
+                        exclude=final_exclude_metrics if final_exclude_metrics else None,
                     )
+                finally:
+                    # Clean up temp file
+                    Path(tmp_path).unlink(missing_ok=True)
 
-                # Count clusters and noise
-                unique_labels = np.unique(labels)
-                n_clusters = len([lbl for lbl in unique_labels if lbl >= 0])
-                n_noise = int(np.sum(labels == -1))
+            # Create timing info
+            timing = TimingInfo(
+                bertopic_seconds=pipeline_timer["elapsed"],
+                evaluation_seconds=eval_timer["elapsed"],
+                total_seconds=pipeline_timer["elapsed"] + eval_timer["elapsed"],
+            )
 
-                # Evaluate with Metricate
-                with timer() as eval_timer:
-                    import tempfile
+            # Create pipeline result
+            pipeline_result = PipelineResult(
+                run_id=run_id,
+                config=run_config,
+                labels=labels,
+                reduced_embeddings=reduced_embeddings,
+                n_clusters=n_clusters,
+                n_noise=n_noise,
+                timing=timing,
+                status="completed",
+            )
 
-                    # Create DataFrame for Metricate
-                    eval_df = pd.DataFrame(
-                        {
-                            "cluster_id": labels,
-                            **{
-                                f"dim_{i}": reduced_embeddings[:, i]
-                                for i in range(reduced_embeddings.shape[1])
-                            },
-                        }
+            # Extract metrics from Metricate result
+            metrics: list[MetricResult] = []
+            for mv in eval_result.computed_metrics():
+                if include_metrics and mv.metric not in include_metrics:
+                    continue
+                metrics.append(
+                    MetricResult(
+                        name=mv.metric,
+                        value=float(mv.value) if mv.value is not None else 0.0,
+                        range=(0.0, 1.0),
+                        direction=mv.direction or "higher",
                     )
-
-                    # Save to temp file for metricate (it expects CSV path)
-                    with tempfile.NamedTemporaryFile(
-                        mode="w", suffix=".csv", delete=False
-                    ) as tmp:
-                        eval_df.to_csv(tmp.name, index=False)
-                        tmp_path = tmp.name
-
-                    try:
-                        # Run evaluation with mode-adjusted exclusions
-                        eval_result = evaluate(
-                            tmp_path,
-                            label_col="cluster_id",
-                            exclude=final_exclude_metrics if final_exclude_metrics else None,
-                        )
-                    finally:
-                        # Clean up temp file
-                        Path(tmp_path).unlink(missing_ok=True)
-
-                # Create timing info
-                timing = TimingInfo(
-                    bertopic_seconds=pipeline_timer["elapsed"],
-                    evaluation_seconds=eval_timer["elapsed"],
-                    total_seconds=pipeline_timer["elapsed"] + eval_timer["elapsed"],
                 )
 
-                # Create pipeline result
-                pipeline_result = PipelineResult(
-                    run_id=run_id,
-                    config=run_config,
-                    labels=labels,
-                    reduced_embeddings=reduced_embeddings,
-                    n_clusters=n_clusters,
-                    n_noise=n_noise,
-                    timing=timing,
-                    status="completed",
-                )
+            # Create run result
+            run_result = RunResult(
+                run_id=run_id,
+                param_values=param_values_dict,
+                pipeline_result=pipeline_result,
+                metrics=metrics,
+            )
 
-                # Extract metrics from Metricate result
-                metrics: list[MetricResult] = []
-                for mv in eval_result.computed_metrics():
-                    if include_metrics and mv.metric not in include_metrics:
-                        continue
-                    metrics.append(
-                        MetricResult(
-                            name=mv.metric,
-                            value=float(mv.value) if mv.value is not None else 0.0,
-                            range=(0.0, 1.0),
-                            direction=mv.direction or "higher",
-                        )
-                    )
+            # Log completion
+            log_run_complete(run_id, timing, n_clusters, n_noise, verbose)
+            return run_result
 
-                # Create run result
-                run_result = RunResult(
-                    run_id=run_id,
-                    param_values=param_values_dict,
-                    pipeline_result=pipeline_result,
-                    metrics=metrics,
-                )
-                runs.append(run_result)
-                completed += 1
+        items = list(enumerate(combinations, start=1))
+        try:
+            with ParallelExecutor(n_workers=n_workers, error_handling=error_handling) as executor:
+                # pbar lives in the main process; on_complete updates it as each run finishes
+                raw_results = executor.map(_execute_grid, items, on_complete=lambda: pbar.update(1))
+        except Exception:
+            pbar.close()
+            raise
 
-                # Log completion
-                log_run_complete(run_id, timing, n_clusters, n_noise, verbose)
+        pbar.close()
 
-            except Exception as e:
+        # Collect results; convert exceptions into failed RunResults
+        for (run_id, combo_values), result in zip(items, raw_results, strict=True):
+            if isinstance(result, Exception):
                 failed += 1
 
                 # Create failed result
+                param_values_dict = dict(zip(param_names, combo_values, strict=True))
+                run_config = self.config.copy()
+                for param, value in param_values_dict.items():
+                    run_config = set_param(run_config, param, value)
                 pipeline_result = PipelineResult(
                     run_id=run_id,
                     config=run_config,
@@ -863,29 +886,20 @@ class Experiment:
                     n_noise=0,
                     timing=TimingInfo(),
                     status="failed",
-                    error=str(e),
+                    error=str(result),
                 )
-
-                run_result = RunResult(
+                runs.append(RunResult(
                     run_id=run_id,
                     param_values=param_values_dict,
                     pipeline_result=pipeline_result,
                     metrics=[],
-                )
-                runs.append(run_result)
-
-                if error_handling == "fail_fast":
-                    pbar.close()
-                    raise RuntimeError(f"Run {run_id} failed: {e}") from e
-                else:
-                    if verbose:
-                        from tqdm import tqdm
-
-                        tqdm.write(f"  ✗ Run {run_id} failed: {e}")
-
-            pbar.update(1)
-
-        pbar.close()
+                ))
+                if verbose:
+                    from tqdm import tqdm
+                    tqdm.write(f"  ✗ Run {run_id} failed: {result}")
+            else:
+                completed += 1
+                runs.append(result)
 
         # Create summary
         total_duration = (datetime.now() - start_time).total_seconds()
